@@ -1438,7 +1438,7 @@ function routeEndTime(perStart,data){
   data.stops.forEach((s,i)=>{
     if(i>0&&legs[i-1])cur+=Math.round(legs[i-1]/60);
     const d=s.type==='delivery'?ST.deliveries.find(x=>x.id===s.id):null;
-    cur+=(s.type==='pickup'?15:(s.type==='start'||s.type==='return')?0:(s.type==='tc')?10:(d?.tempoParada||10));
+    cur+=(s.type==='pickup'?15:(s.type==='start'||s.type==='return')?0:(s.type==='tc')?(()=>{const _t=(ST.transfers||[]).find(x=>x.id===s.tcId);return(_t&&['CD','Matriz','Filial'].includes(_t.pontoDestino))?20:10;})():(d?.tempoParada||10));
   });
   return cur;
 }
@@ -1497,7 +1497,7 @@ function panelHTML(per,data,title,perStartOverride,lunchBannerOverride){
     if(i>0&&legDurs[i-1])cursor+=Math.round(legDurs[i-1]/60);
     arrTimes.push(cursor);
     const d=s.type==='delivery'?ST.deliveries.find(x=>x.id===s.id):null;
-    const svc=s.type==='pickup'?15:(s.type==='start'||s.type==='return')?0:(s.type==='tc')?10:(d?.tempoParada||10);
+    const svc=s.type==='pickup'?15:(s.type==='start'||s.type==='return')?0:(s.type==='tc')?(()=>{const _t=(ST.transfers||[]).find(x=>x.id===s.tcId);return(_t&&['CD','Matriz','Filial'].includes(_t.pontoDestino))?20:10;})():(d?.tempoParada||10);
     svcMins.push(svc);
     cursor+=svc;
   });
@@ -2445,7 +2445,10 @@ function _checkTcNeeded(delivData,delivId){
 function _tcSuggestNext(){
   if(!_tcSuggestQueue.length)return;
   const item=_tcSuggestQueue.shift();
-  const existing=(ST.transfers||[]).filter(t=>t.pontoDestino===item.origem);
+  const _delData=item.data;
+  const _finSet=new Set(ST.finalizedDates||[]);
+  const _activePrev=new Set(Object.keys(ST.routePlans||{}).filter(d=>d<_delData&&!_finSet.has(d)));
+  const existing=(ST.transfers||[]).filter(t=>t.data===_delData||_activePrev.has(t.data));
   _tcSuggestItem=item;
   _showTcSuggestModal(item,existing);
 }
@@ -2457,13 +2460,9 @@ function _showTcSuggestModal(item,existingTcs){
   const prodList=item.prods.map(p=>'<li style="margin-bottom:4px">'+(p.sku?'<strong>'+esc(p.sku)+'</strong> — ':'')+esc(p.nome)+' × '+p.qtd+'</li>').join('');
   let existBtns='';
   existingTcs.forEach(tc=>{
-    const _tipoLabel={motorista:'Nosso Motorista',lalamove:'Lalamove',interna:'Interna s/ movimentação'};
-    const label=[
-      tc.data||'',
-      tc.pontoDestino||'—',
-      _tipoLabel[tc.tipoTransf]||tc.tipoTransf||'',
-      tc.obs?tc.obs.slice(0,30):''
-    ].filter(Boolean).join(' — ');
+    const _dateLbl=tc.data||'';
+    const _titLbl=tc.titulo||(tc.pontoDestino||'Card');
+    const label=_dateLbl?_dateLbl+' — '+_titLbl:_titLbl;
     existBtns+='<button onclick="_tcSuggestAddTo(\''+tc.id+'\')" style="width:100%;padding:9px 12px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #93c5fd;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.83rem;text-align:left;margin-bottom:6px">➕ Acrescentar ao card existente: “'+esc(label)+'”</button>';
   });
   ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px 28px;max-width:460px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
@@ -2473,7 +2472,7 @@ function _showTcSuggestModal(item,existingTcs){
     +'</div>'
     +'<p style="font-size:0.85rem;color:#475569;margin-bottom:8px">Produto(s) com origem em <strong>'+esc(item.origem)+'</strong> para a entrega de <strong>'+esc(item.cliente)+'</strong>:</p>'
     +'<ul style="margin:0 0 14px 16px;padding:0;font-size:0.83rem;color:#1e293b">'+prodList+'</ul>'
-    +(existingTcs.length?'<p style="font-size:0.82rem;color:#6b7280;margin-bottom:8px">Cards existentes para a parada <strong>'+esc(item.origem)+'</strong>:</p>'+existBtns:'<p style="font-size:0.82rem;color:#6b7280;margin-bottom:10px">ℹ️ Nenhum card existente para a parada <strong>'+esc(item.origem)+'</strong>.</p>')
+    +(existingTcs.length?'<p style="font-size:0.82rem;color:#6b7280;margin-bottom:8px">Deseja adicionar em alguma rota já existente?</p>'+existBtns:'')
     +'<div style="display:flex;gap:8px;margin-top:6px">'
     +'<button onclick="_tcSuggestCreate()" style="flex:1;padding:9px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.85rem">➕ Criar novo card</button>'
     +'<button onclick="_tcSuggestDismiss()" style="padding:9px 14px;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.85rem">Ignorar</button>'
