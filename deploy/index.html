@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1346,7 +1346,7 @@ function tcSection(){
           ${t.antesEntrega?`<span style="font-size:0.74rem;color:#991b1b;margin-left:2px">— necessário antes da entrega de <strong>${esc(t.antesEntrega)}</strong></span>`:''}
         </div>`:(t.antesEntrega?`<div style="font-size:0.74rem;color:#b45309;background:#fffbeb;border-bottom:1px solid #fde68a;margin:-12px -12px 8px -12px;padding:5px 12px;border-radius:8px 8px 0 0">🔗 Necessário antes da entrega de <strong>${esc(t.antesEntrega)}</strong></div>`:'')}
         <div class="card-top">
-          <div class="card-nome" style="color:#5b21b6">🚛 Transf./Coleta</div>
+          <div class="card-nome" style="color:#5b21b6">🚛 ${esc(t.titulo||'Transf./Coleta')}</div>
           <div style="display:flex;gap:4px;align-items:center">${topBadge}<span class="badge" style="background:#6b7280;color:#fff;font-size:0.7rem">${perLabel}</span></div>
         </div>
         ${(t.pontoSaida||t.pontoDestino)?`<div style="display:flex;align-items:center;gap:8px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;margin-bottom:6px"><span style="font-weight:700;color:#1d4ed8;font-size:0.88rem">📍 ${esc(t.pontoDestino||'—')}</span></div>`:''}
@@ -1360,6 +1360,12 @@ function tcSection(){
         <div style="margin-top:4px;font-size:0.76rem;color:#6b7280">${prodCount} produto${prodCount!==1?'s':''}</div>
         <div style="margin-top:8px;border-top:1px solid #f1f5f9;padding-top:8px">
           ${(()=>{
+            if(t.tipoTransf==='lalamove'){
+              return`<div style="width:100%;padding:6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;font-size:0.76rem;font-weight:600;color:#c2410c;text-align:center">📦 Lalamove — não inclui na rota</div>`;
+            }
+            if(t.tipoTransf==='interna'){
+              return`<div style="width:100%;padding:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;font-size:0.76rem;font-weight:600;color:#1d4ed8;text-align:center">🔄 Ted interna — não inclui na rota</div>`;
+            }
             const _tcR=isTcInRoute(t.id);
             if(_tcR){
               const _lbl=_tcR==='entrega_manha'?'Entregas — Manhã':_tcR==='entrega_tarde'?'Entregas — Tarde':_tcR==='transf_manha'?'Transferências — Manhã':'Transferências — Tarde';
@@ -4483,8 +4489,9 @@ function openTcForm(){
   document.getElementById('tcTitle').textContent='Nova Transferência / Coleta';
   const _btnDel0=document.getElementById('tcBtnDel');if(_btnDel0)_btnDel0.style.display='none';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-  sf('tcData',ST.selectedDate||'');sf('tcObs','');sf('tcAntesEntrega','');sf('tcPontoDestino','');
+  sf('tcTitulo','');sf('tcData',ST.selectedDate||'');sf('tcObs','');sf('tcAntesEntrega','');sf('tcPontoDestino','');
   const chk=document.getElementById('tcTagImportante');if(chk)chk.checked=false;
+  resetTcTipo();onTcTipoChange();
   _tcFillClientesList();
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
@@ -4517,9 +4524,10 @@ function openEditTcCard(id){
   document.getElementById('tcTitle').textContent='Editar Transferência / Coleta';
   const _btnDel1=document.getElementById('tcBtnDel');if(_btnDel1)_btnDel1.style.display='';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||'';};
-  sf('tcData',tc.data);sf('tcObs',tc.obs||'');sf('tcAntesEntrega',tc.antesEntrega||'');sf('tcPontoDestino',tc.pontoDestino||'');sf('tcAutor','');
+  sf('tcTitulo',tc.titulo||'');sf('tcData',tc.data);sf('tcObs',tc.obs||'');sf('tcAntesEntrega',tc.antesEntrega||'');sf('tcAutor','');
   const chkE=document.getElementById('tcTagImportante');if(chkE)chkE.checked=!!tc.tagImportante;
-  resetTcTipo();if(tc.tipoTransf)setTcTipo(tc.tipoTransf);
+  resetTcTipo();if(tc.tipoTransf)setTcTipo(tc.tipoTransf);onTcTipoChange();
+  sf('tcPontoDestino',tc.pontoDestino||'');onTcDestinoChange();
   _tcFillClientesList();
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
@@ -4864,8 +4872,32 @@ function resetTcTipo(){
   const el=document.getElementById('tcTipoSelect');
   if(el) el.value='';
 }
+function onTcTipoChange(){
+  const tipo=getTcTipo();
+  const box=document.getElementById('tcDestinoBox');
+  if(box) box.style.display=(tipo==='motorista'||tipo==='lalamove')?'':'none';
+  if(tipo!=='motorista'&&tipo!=='lalamove'){
+    const el=document.getElementById('tcPontoDestino');if(el)el.value='';
+    const addr=document.getElementById('tcDestinoAddr');if(addr)addr.style.display='none';
+  }
+}
+function onTcDestinoChange(){
+  const dest=(document.getElementById('tcPontoDestino')||{}).value||'';
+  const addrBox=document.getElementById('tcDestinoAddr');
+  const addrText=document.getElementById('tcDestinoAddrText');
+  if(!addrBox||!addrText)return;
+  const loc=BASES[dest];
+  if(dest&&dest!=='Cliente'&&loc&&loc.addr){
+    addrText.textContent=loc.addr;
+    addrBox.style.display='';
+  } else {
+    addrBox.style.display='none';
+  }
+}
 function saveTcCard(){
   const gf=id=>((document.getElementById(id)||{}).value||'').trim();
+  const titulo=gf('tcTitulo');
+  if(!titulo){toast('Informe o título do card','err');document.getElementById('tcTitulo').focus();return;}
   const autor=gf('tcAutor');
   if(!autor){toast('Informe seu nome','err');document.getElementById('tcAutor').focus();return;}
   if(!gf('tcData')){toast('Informe a data','err');return;}
@@ -4875,7 +4907,7 @@ function saveTcCard(){
   const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const hoje=new Date().toLocaleDateString('pt-BR');
   const tagImp=!!(document.getElementById('tcTagImportante')||{}).checked;
-  const rec={id:tcEditId,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:gf('tcPontoDestino'),produtos:[..._tcProdutos]};
+  const rec={id:tcEditId,titulo,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:gf('tcPontoDestino'),produtos:[..._tcProdutos]};
   if(!ST.transfers)ST.transfers=[];
   if(!tcNewCard){
     // Editing existing — just update
@@ -6582,6 +6614,11 @@ function addTcToRoute(tcId, routeType, per){
   <div class="modal" style="max-width:860px" onclick="event.stopPropagation()">
     <div class="mhdr"><h2 id="tcTitle">Nova Transferência / Coleta</h2><button class="xbtn" onclick="closeTcForm()">&#x2715;</button></div>
     <div class="mbody">
+      <!-- Título do card -->
+      <div class="fg">
+        <label>📋 Título do card <span style="color:#ef4444;font-size:0.72rem">*obrigatório</span></label>
+        <input type="text" id="tcTitulo" placeholder="Ex: Transferência CD → Filial, Coleta Fernanda..." style="font-weight:600">
+      </div>
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:2px">
         <div class="fg" style="min-width:160px;flex:0 0 auto"><label>Data</label><input type="date" id="tcData"></div>
         <div class="fg" style="flex:1;min-width:220px">
@@ -6596,29 +6633,29 @@ function addTcToRoute(tcId, routeType, per){
           </label>
         </div>
       </div>
-      <!-- Ponto de Saída / Destino -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:8px">
-        <div class="fg" style="flex:1;min-width:140px">
-          <label style="font-weight:700;color:#1d4ed8;font-size:0.82rem">📍 Parada</label>
-          <select id="tcPontoDestino" style="border-radius:7px;border:1px solid #93c5fd;padding:6px 8px;font-size:0.83rem;width:100%;background:#fff">
-            <option value="">— Selecione —</option>
-            <option value="CD">CD</option>
-            <option value="Matriz">Matriz</option>
-            <option value="Filial">Filial</option>
-            <option value="Cliente">Cliente</option>
-          </select>
-        </div>
-      </div>
-      <div class="fg"><label>Observações</label><input type="text" id="tcObs" placeholder="Ex: urgente, aguardar assinatura..."></div>
       <!-- Tipo de Transferência -->
       <div class="fg">
         <label style="font-weight:700;color:#5b21b6">🚚 Tipo de transferência <span style="color:#ef4444;font-size:0.72rem">*obrigatório</span></label>
-        <select id="tcTipoSelect" style="margin-top:4px;width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;color:#374151">
+        <select id="tcTipoSelect" onchange="onTcTipoChange()" style="margin-top:4px;width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;color:#374151">
           <option value="">— Selecione o tipo —</option>
           <option value="motorista">🚗 Feita por nosso Motorista</option>
           <option value="lalamove">📦 Feita por Lalamove</option>
           <option value="interna">🔄 Interna sem movimentação de produtos</option>
         </select>
+      </div>
+      <!-- Local de Destino (condicional: motorista ou lalamove) -->
+      <div id="tcDestinoBox" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:8px">
+        <div class="fg" style="margin:0">
+          <label style="font-weight:700;color:#1d4ed8;font-size:0.82rem">📍 Local de destino</label>
+          <select id="tcPontoDestino" onchange="onTcDestinoChange()" style="border-radius:7px;border:1px solid #93c5fd;padding:6px 8px;font-size:0.83rem;width:100%;background:#fff;margin-top:4px">
+            <option value="">— Selecione —</option>
+            <option value="Matriz">Matriz</option>
+            <option value="Filial">Filial</option>
+            <option value="CD">CD</option>
+            <option value="Cliente">Cliente</option>
+          </select>
+          <div id="tcDestinoAddr" style="display:none;margin-top:6px;font-size:0.8rem;color:#1e40af;background:#dbeafe;border-radius:6px;padding:5px 10px">📍 <span id="tcDestinoAddrText"></span></div>
+        </div>
       </div>
       <!-- Produtos -->
       <div class="fg" style="margin-top:10px">
