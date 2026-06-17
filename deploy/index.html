@@ -2068,6 +2068,9 @@ async function runRouteGeneration(){
       const insAt=retIdx>=0?retIdx:stops.length;
       tcList.forEach(tc=>stops.splice(insAt,0,tc));
     }
+    save();
+    setLm('Recalculando rotas...');
+    await Promise.all([recalcPer('manha'),recalcPer('tarde'),recalcTransfPer('manha'),recalcTransfPer('tarde')]);
     save();hideL();editingRoute=false;renderRouteSection();renderCards();toast('Sugestão de rota gerada!','ok');
   }catch(err){hideL();toast('Erro: '+err.message,'err');console.error(err);}
 }
