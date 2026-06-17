@@ -3648,9 +3648,18 @@ function renderDrvProdChecklist(d, statusKey){
   const plan=curPlan();
   const dsObj=plan?.driverStatus?.[statusKey];
   const prodChecks=(typeof dsObj==='object'?dsObj?.prodChecks:null)||{};
+  const curStatus=typeof dsObj==='object'?dsObj?.status:dsObj;
+  const isEntregue=curStatus==='entregue';
   const itemsHtml=arr.map((p,i)=>{
     const chk=!!prodChecks[i];
     const lbl=(p.sku?'<strong>'+esc(p.sku)+'</strong> — ':'')+esc(p.nome)+' × '+p.qtd+(p.origem?' <span style="color:#9ca3af">('+esc(p.origem)+')</span>':'');
+    // ✓✓ após entregue: mostra dois checks em vez do checkbox
+    if(isEntregue&&chk){
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<span style="color:#16a34a;font-weight:900;font-size:0.95rem;letter-spacing:-2px;flex-shrink:0;min-width:20px" title="Conferido e entregue">✓✓</span>'
+        +'<span style="text-decoration:line-through;color:#9ca3af;font-size:0.85rem">'+lbl+'</span>'
+        +'</div>';
+    }
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
       +'<input type="checkbox" '+(chk?'checked ':'')+' data-sk="'+statusKey+'" data-pi="'+i+'" onchange="toggleDrvProdCheck(this.dataset.sk,+this.dataset.pi,this)"'
       +' style="width:18px;height:18px;cursor:pointer;accent-color:#16a34a;flex-shrink:0">'
