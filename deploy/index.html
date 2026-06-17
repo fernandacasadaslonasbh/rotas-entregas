@@ -2493,14 +2493,19 @@ function _tcSuggestCreate(){
   if(!_tcSuggestItem)return;
   const item=_tcSuggestItem;
   _tcSuggestDismiss();
-  openTcForm();
-  setTimeout(()=>{
-    const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-    sf('tcData',item.data);
-    sf('tcPontoDestino',item.origem);
-    sf('tcObs','Para entrega: '+item.cliente);
-    _tcProdutos=(item.prods||[]).map(p=>({...p,fromDeliveryId:item.delivId||null}));renderTcProdLista();
-  },100);
+  if(item.delivId){
+    // Abre formulário pré-preenchido com dados da entrega original
+    openTcFromDelivery(item.delivId);
+  } else {
+    openTcForm();
+    setTimeout(()=>{
+      const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+      sf('tcData',item.data);
+      sf('tcPontoDestino',item.origem);
+      sf('tcObs','Para entrega: '+item.cliente);
+      _tcProdutos=(item.prods||[]).map(p=>({...p,fromDeliveryId:item.delivId||null}));renderTcProdLista();
+    },100);
+  }
 }
 function _tcSuggestDismiss(){
   const ov=document.getElementById('tcSuggestOverlay');
@@ -4431,7 +4436,7 @@ function toggleColetasStatus(delivId){
       ?`<button onclick="markColetasStatus('${delivId}',false);this.closest('div[id]').remove()" style="width:100%;padding:7px;background:#fef2f2;border:1px solid #fca5a5;border-radius:7px;color:#dc2626;font-weight:600;cursor:pointer;margin-bottom:6px">↩ Desfazer — ainda não providenciadas</button>`
       :`<button onclick="markColetasStatus('${delivId}',true);this.closest('div[id]').remove()" style="width:100%;padding:7px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;color:#15803d;font-weight:600;cursor:pointer;margin-bottom:6px">✅ Marcar como providenciadas</button>`
     }
-    <button onclick="openTcFromDelivery('${delivId}');this.closest('div[id]').remove()" style="width:100%;padding:7px;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;color:#92400e;font-weight:600;cursor:pointer">+ Criar Transferência / Coleta</button>
+    <button onclick="_openTcSuggestFromPopover('${delivId}');this.closest('div[id]').remove()" style="width:100%;padding:7px;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;color:#92400e;font-weight:600;cursor:pointer">+ Criar Transferência / Coleta</button>
     <div style="text-align:right;margin-top:6px"><button onclick="this.closest('div[id]').remove()" style="border:none;background:none;font-size:0.75rem;color:#9ca3af;cursor:pointer">Fechar</button></div>`;
   document.body.appendChild(pop);
   // Close on outside click
@@ -4443,6 +4448,15 @@ function markColetasStatus(delivId,val){
   ST.deliveries[idx].coletasProvidenciadas=val;
   save();renderCards();
   toast(val?'Coletas/transferências marcadas como providenciadas':'Status revertido','ok');
+}
+function _openTcSuggestFromPopover(delivId){
+  const d=ST.deliveries.find(x=>x.id===delivId);
+  if(!d)return;
+  // Se não houver produtos com origem externa, abre form direto
+  const extProds=(d.produtos||[]).filter(p=>p.origem&&p.origem!=='CD'&&p.origem!=='');
+  if(!extProds.length){openTcFromDelivery(delivId);return;}
+  // Passa pelo modal de sugestão (cards existentes da mesma data/dias ativos)
+  _checkTcNeeded(d,delivId);
 }
 function openTcFromDelivery(delivId){
   const d=ST.deliveries.find(x=>x.id===delivId);
