@@ -1438,7 +1438,7 @@ function routeEndTime(perStart,data){
   data.stops.forEach((s,i)=>{
     if(i>0&&legs[i-1])cur+=Math.round(legs[i-1]/60);
     const d=s.type==='delivery'?ST.deliveries.find(x=>x.id===s.id):null;
-    cur+=(s.type==='pickup'?15:(s.type==='start'||s.type==='return'||s.type==='tc')?0:(d?.tempoParada||10));
+    cur+=(s.type==='pickup'?15:(s.type==='start'||s.type==='return')?0:(s.type==='tc')?10:(d?.tempoParada||10));
   });
   return cur;
 }
@@ -1497,7 +1497,7 @@ function panelHTML(per,data,title,perStartOverride,lunchBannerOverride){
     if(i>0&&legDurs[i-1])cursor+=Math.round(legDurs[i-1]/60);
     arrTimes.push(cursor);
     const d=s.type==='delivery'?ST.deliveries.find(x=>x.id===s.id):null;
-    const svc=s.type==='pickup'?15:(s.type==='start'||s.type==='return'||s.type==='tc')?0:(d?.tempoParada||10);
+    const svc=s.type==='pickup'?15:(s.type==='start'||s.type==='return')?0:(s.type==='tc')?10:(d?.tempoParada||10);
     svcMins.push(svc);
     cursor+=svc;
   });
@@ -1593,7 +1593,7 @@ function stopMeta(s){
   if(s.type==='return'){return{icon:'🏠',name:'Retorno ao CD',sub:'',just:''};}
   if(s.type==='pickup'){const b=BASES[s.key]||{};return{icon:'📦',name:'Coleta: '+(b.label||s.key),sub:b.addr||'',just:''};}
   if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);if(!d)return{icon:'📍',name:'(removido)',sub:'',just:''};return{icon:'🏠',name:d.cliente||'(sem nome)',sub:bAddr(d)||d.mapsLink||'',just:''};}
-  if(s.type==='tc'){const tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!tc)return{icon:'📋',name:'(removido)',sub:'',just:''};const grps=_tcRouteGroups(tc);return{icon:'🚛',name:'Transf./Coleta',sub:grps,just:tc.obs||''};}
+  if(s.type==='tc'){const tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!tc)return{icon:'📋',name:'(removido)',sub:'',just:''};const grps=_tcRouteGroups(tc);const _destAddr=(tc.pontoDestino&&tc.pontoDestino!=='Cliente'&&BASES[tc.pontoDestino])?BASES[tc.pontoDestino].addr:'';const _sub=[_destAddr,grps].filter(Boolean).join(' · ');return{icon:'🚛',name:tc.titulo||'Transf./Coleta',sub:_sub,just:tc.obs||''};}
   if(s.type==='custom'){if(s.key&&BASES[s.key]){const b=BASES[s.key];return{icon:'📍',name:b.label,sub:b.addr,just:s.just||''};}return{icon:'📍',name:s.label||s.addr||'Parada',sub:s.addr||'',just:s.just||''};}
   if(s.type==='waypoint'){const b=BASES[s.key]||{};return{icon:'📍',name:b.label||s.key,sub:b.addr||'',just:''};}
   return{icon:'📍',name:s.label||'Parada',sub:'',just:''};
@@ -6587,7 +6587,7 @@ function addTcToRoute(tcId, routeType, per){
     // Avoid duplicates in same period
     if(plan[key].some(s=>s.tcId===tcId)){toast('Já está nesta rota','err');return;}
     plan[key].push({type:'tc',tcId});
-    recalcTransfPer(per).then(()=>renderTransfPanels());
+    recalcTransfPer(per).then(()=>{save();renderTransfPanels();renderContent();});
     toast(`Adicionado à rota de transferências (${per==='manha'?'Manhã':'Tarde'})`,'ok');
   } else {
     // Add as custom stop to delivery route
@@ -6600,7 +6600,8 @@ function addTcToRoute(tcId, routeType, per){
     const insertAt=retIdx>=0?retIdx:stops.length;
     const label=tc?('Transf./Coleta: '+_tcRouteGroups(tc)):'Transferência/Coleta';
     stops.splice(insertAt,0,{type:'tc',tcId,label});
-    save();renderRouteSection();
+    save();
+    recalcPer(per).then(()=>{save();renderRouteSection();renderContent();});
     toast(`Adicionado à rota de entregas (${per==='manha'?'Manhã':'Tarde'})`,'ok');
   }
 }
