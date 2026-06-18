@@ -27,9 +27,11 @@ async function getSaldo(sku) {
     const data = await r.json();
     if (data.faultstring) return null;
     const lista = data.listaEstoque || [];
-    if (!lista.length) return 0;
-    // Soma todos os locais — igual ao "Estoque Físico" no Omie
-    return lista.reduce((sum, e) => sum + (parseFloat(e.fisico ?? e.nSaldo ?? 0) || 0), 0);
+    if (!lista.length) return { fisico: 0, cmc: null };
+    const fisico = lista.reduce((sum, e) => sum + (parseFloat(e.fisico ?? e.nSaldo ?? 0) || 0), 0);
+    // nCMC vem no primeiro item (custo médio de compra)
+    const cmc = parseFloat(lista[0]?.nCMC) || null;
+    return { fisico, cmc };
   } catch (e) {
     console.error(`[estoque] ${sku}: ${e.message}`);
     return null;
