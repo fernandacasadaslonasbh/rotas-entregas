@@ -30,11 +30,9 @@ async function getSaldo(sku) {
     const lista = data.listaEstoque || [];
     if (!lista.length) return 0;
 
-    // Procura o local específico (CD); se não achar, usa o primeiro
-    const local = lista.find(e => e.nIdlocal === ID_LOCAL) || lista[0];
-    // Campo correto é "fisico"; nSaldo é alias
-    const saldo = local.fisico ?? local.nSaldo ?? 0;
-    return typeof saldo === 'number' ? saldo : parseFloat(saldo) || 0;
+    // Soma todos os locais — mesmo resultado que "Estoque Físico" no Omie
+    const total = lista.reduce((sum, e) => sum + (parseFloat(e.fisico ?? e.nSaldo ?? 0) || 0), 0);
+    return total;
   } catch (e) {
     console.error(`[estoque] ${sku}: ${e.message}`);
     return null;
