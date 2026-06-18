@@ -412,12 +412,90 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 .trm-btn:hover{background:#f3f4f6;}
 .trm-del{color:#dc2626;}
 .trm-del:hover{background:#fef2f2;}
+
+/* ══════════════════════════════════════════
+   MOBILE RESPONSIVE (≤ 768px)
+══════════════════════════════════════════ */
+.sb-toggle{display:none;background:none;border:none;color:white;font-size:1.3rem;cursor:pointer;padding:4px 8px;margin-right:4px;border-radius:6px;line-height:1;flex-shrink:0}
+.sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999}
+.sb-overlay.active{display:block}
+
+@media(max-width:768px){
+  /* ── Topbar ── */
+  .topbar{flex-wrap:wrap;padding:8px 10px;gap:6px;min-height:auto}
+  .topbar-brand{font-size:0.82rem;order:1}
+  .sb-toggle{display:flex;order:0;align-items:center}
+  .top-tabs{order:2;width:100%;gap:2px;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px;scrollbar-width:none}
+  .top-tabs::-webkit-scrollbar{display:none}
+  .top-tab{padding:5px 10px;font-size:0.72rem;white-space:nowrap;flex-shrink:0}
+
+  /* ── Sidebar drawer ── */
+  .sidebar{
+    position:fixed;left:-240px;top:0;bottom:0;z-index:1000;
+    width:240px;transition:left .25s ease;
+    box-shadow:4px 0 24px rgba(0,0,0,.18);
+  }
+  .sidebar.sb-open{left:0}
+
+  /* ── Content ── */
+  .content{padding:10px 8px}
+  .appbody{overflow:visible}
+
+  /* ── Cards ── */
+  .cards-grid{grid-template-columns:1fr}
+  .card{padding:10px}
+
+  /* ── Route panels ── */
+  .route-cols{grid-template-columns:1fr}
+  .rpanel{padding:10px}
+
+  /* ── Transferências tables: horizontal scroll ── */
+  .transf-table{min-width:600px}
+  .transf-section,.transf-resumo-card,
+  [class*="transf-"]{overflow-x:auto}
+  table.transf-table{display:table}
+
+  /* ── Modals & overlays ── */
+  .modal-box,.modal-inner{
+    width:calc(100vw - 24px)!important;
+    max-width:calc(100vw - 24px)!important;
+    margin:12px auto;
+    padding:16px!important;
+    border-radius:12px!important
+  }
+  .overlay-inner, [style*="max-width:700px"]{
+    max-width:calc(100vw - 24px)!important;
+    width:calc(100vw - 24px)!important;
+    margin:10px auto;
+    padding:16px!important;
+  }
+
+  /* ── Buttons and forms ── */
+  .btn{padding:7px 12px;font-size:0.8rem}
+  select,input[type="text"],input[type="number"],input[type="tel"],textarea{
+    font-size:16px!important /* prevent iOS zoom */
+  }
+
+  /* ── Transferências sub-tabs ── */
+  .transf-tabs{flex-wrap:wrap;gap:4px}
+  .transf-tab{padding:5px 10px;font-size:0.75rem}
+
+  /* ── TC cards ── */
+  .tc-cards-grid{grid-template-columns:1fr!important}
+  
+  /* ── Route stop items ── */
+  .r-stop{font-size:0.82rem;padding:6px 7px}
+  
+  /* ── Period header ── */
+  .period-hdr{flex-wrap:wrap;gap:4px}
+}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
 <body>
 <div class="topbar">
+  <button class="sb-toggle" onclick="toggleSidebar()" title="Menu">☰</button>
   <span class="topbar-brand">Rotas de Entrega – Casa das Lonas</span>
   <div class="top-tabs">
     <button class="top-tab active" id="tab-gestao" onclick="switchTab('gestao')">📦 Gestão</button>
@@ -426,9 +504,10 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
     <button class="top-tab" id="tab-admin" onclick="switchTab('admin')">⚙ Administrador</button>
   </div>
 </div>
+<div id="sb-overlay" class="sb-overlay" onclick="toggleSidebar()"></div>
 <div class="appbody" id="page-gestao">
   <!-- Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar-main">
     <div class="sb-top">
       <button class="btn btn-success" style="width:100%" onclick="openNew()">+ Nova Entrega</button>
       <button class="btn btn-sm" style="width:100%;margin-top:6px;background:#7c3aed;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:0.83rem;font-weight:600;padding:8px 0" onclick="openTcForm()">+ Transferência / Coleta</button>
@@ -1061,6 +1140,15 @@ function initFirebase(){
 // ─────────────────────────────────────────────────────────────────────────────
 const SKEY='cdl_rotas_v3',BKEY='cdl_base_coords';
 const STOP_MIN=30,MANHA_MIN=90,TARDE_MIN=90,BASE_CAP=3;
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar-main');
+  const ov=document.getElementById('sb-overlay');
+  const open=sb.classList.toggle('sb-open');
+  ov.classList.toggle('active',open);
+}
+// Close sidebar when a tab is switched on mobile
+const _origSwitchTab=typeof switchTab!=='undefined'?switchTab:null;
+
 const FATOR_TRANSITO=1.4; // Usado apenas como fallback quando sem chave Google
 const GOOGLE_MAPS_API_KEY='AIzaSyBOBHDMef8kte3INYL-Bm6_rhe-eW-4_gI'; // ← Cole sua chave Google Maps aqui
 const BASES={
@@ -2771,6 +2859,10 @@ function importData(ev){
 
 // ── Tab Navigation ────────────────────────────────────────────
 function switchTab(tab){
+  // Close sidebar on mobile when switching tabs
+  const sb=document.getElementById('sidebar-main');
+  const ov=document.getElementById('sb-overlay');
+  if(sb&&window.innerWidth<=768){sb.classList.remove('sb-open');if(ov)ov.classList.remove('active');}
   ['gestao','admin','motorista','transf'].forEach(t=>{
     document.getElementById('page-'+t).style.display = t===tab ? (t==='gestao'||t==='transf'?'flex':'block') : 'none';
     const btn=document.getElementById('tab-'+t);
@@ -6225,7 +6317,7 @@ function _buildSectionTable(rows, date, type){
       <td style="text-align:center">${rptBtn}</td>
     </tr>${rptNote}`;
   });
-  return h+'</tbody></table>';
+  return '<div style="overflow-x:auto">'+h+'</tbody></table></div>';
 }
 
 function _buildChangelogBlock(ovr){
