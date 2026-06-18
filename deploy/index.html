@@ -488,6 +488,12 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
   
   /* ── Period header ── */
   .period-hdr{flex-wrap:wrap;gap:4px}
+
+  /* ── SCROLL FIX: libera scroll natural da página no mobile ── */
+  body{height:auto!important;overflow:auto!important;min-height:100vh}
+  .appbody{overflow:visible!important;flex:none;min-height:0}
+  .content{overflow:visible!important;height:auto!important;flex:none}
+  .sidebar{height:100vh;overflow-y:auto}
 }
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
