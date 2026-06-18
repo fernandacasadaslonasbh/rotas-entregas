@@ -1639,6 +1639,8 @@ function renderRoutePanels(){
     tbBtns+='<button class="tarde-base-btn'+(b===tardeBase?' active':'')+'" data-base="'+b+'" onclick="setTardeBase(this.dataset.base)">'+tbLabels[b]+'</button>';
   });
   const tardeTitleEl='Tarde <span class="tarde-base-sel">'+tbBtns+'</span>';
+  // Garantir start/return nos períodos
+  ['manha','tarde'].forEach(p=>{if(plan[p]&&plan[p].stops){normalizeStartStop(p);normalizeReturnStop(p);}});
   area.innerHTML=`<div class="route-cols"><div id="pM">${panelHTML('manha',plan.manha,'Manhã — 08h30',mStart)}</div><div id="pT">${panelHTML('tarde',plan.tarde,tardeTitleEl,afternoonStart,lunch)}</div></div>`;
   initDrag();
 }
@@ -1934,7 +1936,7 @@ function moveStop(per,i,dir){
   const stops=perData.stops;
   const j=i+dir;
   const sj=stops[j];
-  if(j<1){toast('início da lista','err');return;}
+  if(j<0){toast('início da lista','err');return;}
   if(j>=stops.length){toast('fim da lista','err');return;}
   if(sj?.type==='start'||sj?.type==='return'){toast('não pode passar de início/fim','err');return;}
   [stops[i],stops[j]]=[stops[j],stops[i]];
@@ -7285,6 +7287,7 @@ function addTcToRoute(tcId, routeType, per){
     const insertAt=retIdx>=0?retIdx:stops.length;
     const label=tc?('Transf./Coleta: '+_tcRouteGroups(tc)):'Transferência/Coleta';
     stops.splice(insertAt,0,{type:'tc',tcId,label});
+    normalizeStartStop(per);normalizeReturnStop(per);
     save();
     recalcPer(per).then(()=>{save();renderRouteSection();renderContent();});
     toast(`Adicionado à rota de entregas (${per==='manha'?'Manhã':'Tarde'})`,'ok');
