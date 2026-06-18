@@ -513,9 +513,9 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
   .rpanel{box-sizing:border-box;min-width:0}
   #routeSection,#routeSection *{box-sizing:border-box;min-width:0}
 
-  /* ── Transferências: layout vertical no mobile ── */
-  #page-transf{display:block!important;overflow:visible!important;height:auto!important}
-  #page-transf>div{display:block!important;height:auto!important;overflow:visible!important}
+  /* ── Transferências: layout vertical no mobile (só quando ativa) ── */
+  #page-transf[style*="flex"]{display:block!important;overflow:visible!important;height:auto!important}
+  #page-transf[style*="flex"]>div{display:block!important;height:auto!important;overflow:visible!important}
   #transf-sidebar{
     width:100%!important;min-width:0!important;height:auto!important;
     overflow-x:auto!important;overflow-y:hidden!important;
@@ -1182,28 +1182,31 @@ function initFirebase(){
 const SKEY='cdl_rotas_v3',BKEY='cdl_base_coords';
 const STOP_MIN=30,MANHA_MIN=90,TARDE_MIN=90,BASE_CAP=3;
 function _showAdminPin(){
-  const pg=document.getElementById('page-admin');
-  pg.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;padding:20px">
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:32px 28px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.1)">
-      <div style="font-size:2rem;margin-bottom:8px">🔒</div>
-      <h3 style="margin:0 0 6px;font-size:1rem;color:#1e293b">Área Restrita</h3>
-      <p style="font-size:0.82rem;color:#6b7280;margin:0 0 20px">Digite a senha para acessar o Administrador</p>
-      <input id="adminPinInput" type="password" inputmode="numeric" maxlength="10" placeholder="Senha"
-        style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:10px;font-size:1.1rem;text-align:center;box-sizing:border-box;letter-spacing:4px;margin-bottom:14px"
-        onkeydown="if(event.key==='Enter')_checkAdminPin()">
-      <button onclick="_checkAdminPin()"
-        style="width:100%;background:#1a3a5c;color:#fff;border:none;border-radius:10px;padding:11px;font-size:0.9rem;font-weight:700;cursor:pointer">
-        Entrar
-      </button>
-      <div id="adminPinErr" style="color:#dc2626;font-size:0.8rem;margin-top:10px;display:none">Senha incorreta. Tente novamente.</div>
-    </div>
+  document.getElementById('adminPinOverlay')?.remove();
+  const ov=document.createElement('div');
+  ov.id='adminPinOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:#f0f2f5;z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:32px 28px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+    <div style="font-size:2.2rem;margin-bottom:8px">🔒</div>
+    <h3 style="margin:0 0 6px;font-size:1rem;color:#1e293b">Área Restrita</h3>
+    <p style="font-size:0.82rem;color:#6b7280;margin:0 0 20px">Digite a senha para acessar o Administrador</p>
+    <input id="adminPinInput" type="password" inputmode="numeric" maxlength="10" placeholder="Senha"
+      style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:10px;font-size:1.1rem;text-align:center;box-sizing:border-box;letter-spacing:4px;margin-bottom:14px"
+      onkeydown="if(event.key==='Enter')_checkAdminPin()">
+    <button onclick="_checkAdminPin()"
+      style="width:100%;background:#1a3a5c;color:#fff;border:none;border-radius:10px;padding:11px;font-size:0.9rem;font-weight:700;cursor:pointer">
+      Entrar
+    </button>
+    <div id="adminPinErr" style="color:#dc2626;font-size:0.8rem;margin-top:10px;display:none">Senha incorreta. Tente novamente.</div>
   </div>`;
+  document.body.appendChild(ov);
   setTimeout(()=>document.getElementById('adminPinInput')?.focus(),100);
 }
 function _checkAdminPin(){
   const val=(document.getElementById('adminPinInput')?.value||'').trim();
   if(val==='5056'){
     sessionStorage.setItem('cdl_admin_auth','1');
+    document.getElementById('adminPinOverlay')?.remove();
     switchTab('admin');
   } else {
     const err=document.getElementById('adminPinErr');
@@ -2944,10 +2947,6 @@ function switchTab(tab){
   });
   if(tab==='admin'){
     if(!sessionStorage.getItem('cdl_admin_auth')){
-      // Não autenticado: mostrar tela de senha em vez do conteúdo
-      document.getElementById('page-admin').style.display='block';
-      ['gestao','motorista','transf'].forEach(t=>document.getElementById('page-'+t).style.display='none');
-      ['gestao','admin','motorista','transf'].forEach(t=>{const b=document.getElementById('tab-'+t);if(b)b.classList.toggle('active',t==='admin');});
       _showAdminPin();
       return;
     }
