@@ -1937,10 +1937,19 @@ function ulDrop(e,per){
     if(e.clientY<=r.top+r.height/2){insertIdx=parseInt(el.dataset.i);break;}
   }
   if(sp===per){
-    if(insertIdx===null||insertIdx===si||insertIdx===0)return;
+    // insertIdx===null = soltar após o último elemento (inserir no final)
+    const retIdx2=srcStops.findIndex(s=>s.type==='return');
+    const safeEnd2=retIdx2>=0?retIdx2:srcStops.length;
+    if(insertIdx===si||(insertIdx===0&&si!==0))return;
     const[mv]=srcStops.splice(si,1);
-    const adj=insertIdx>si?insertIdx-1:insertIdx;
-    srcStops.splice(adj,0,mv);
+    if(insertIdx===null){
+      // Inserir antes do return (no final dos draggáveis)
+      const ri2=srcStops.findIndex(s=>s.type==='return');
+      srcStops.splice(ri2>=0?ri2:srcStops.length,0,mv);
+    }else{
+      const adj=insertIdx>si?insertIdx-1:insertIdx;
+      srcStops.splice(adj,0,mv);
+    }
   }else{
     const dstStops=curPlan()[per].stops;
     const[mv]=srcStops.splice(si,1);
