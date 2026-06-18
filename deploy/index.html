@@ -6955,8 +6955,18 @@ function _renderTransfResumo(el){
       <button onclick="downloadTransfResumoExcel('${date}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">📥 Baixar Excel</button>
     </div>
   </div>`;
-  html += `<div style="color:#a78bfa;font-size:12px;margin-bottom:8px">${_fmt_date(date)}</div>`;
+  html += `<div style="color:#a78bfa;font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+    <span>${_fmt_date(date)}</span>
+    <span id="sync-resumo-info" style="color:#9ca3af;font-size:11px"></span>
+  </div>`;
   html += _alertBanner;
+  // Carrega última sincronização do Firebase (assíncrono, não bloqueia render)
+  if(typeof _fbDb!=='undefined'&&_fbDb){
+    _fbDb.ref('cdl_config/ultima_sincronizacao').once('value').then(snap=>{
+      const el=document.getElementById('sync-resumo-info');
+      if(el&&snap.val())el.textContent='🔄 Última sync Omie: '+snap.val();
+    }).catch(()=>{});
+  }
 
   let anyGroup = false;
 
