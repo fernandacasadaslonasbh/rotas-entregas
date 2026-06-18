@@ -5548,6 +5548,192 @@ function _saveResumoOverrides(date, obj){
   if(!ST.transfLocEdits[date]) ST.transfLocEdits[date]={};
   ST.transfLocEdits[date]['__resumo__']=obj; save();
 }
+function openResumoEditModal(date, orig, nota){
+  document.getElementById('resumoEditOverlay')?.remove();
+  const label=`${orig} → ${nota}`;
+  // Collect rows for this route from the current Resumo data
+  const allRows=[];
+  const _LOCS=['CD','Matriz','Filial'];
+  _LOCS.forEach(loc=>{
+    _getSectionRows(date,loc,'sep',{mirrors:false}).forEach(r=>{if(!r._mirrorFrom)allRows.push(r);});
+  });
+  const _resumoOvrs=_resumoOverrides(date);
+  const _removedKeys=new Set(_resumoOvrs.removed||[]);
+  allRows.forEach(r=>{
+    const k=r.tcId+'__'+r.prodIdx;
+    if(_resumoOvrs.overrides&&_resumoOvrs.overrides[k]!=null){const ov=_resumoOvrs.overrides[k];if(ov.qtd!=null)r.qtd=ov.qtd;}
+  });
+  const baseRows=allRows.filter(r=>!_removedKeys.has(r.tcId+'__'+r.prodIdx)&&r.destNota&&r.destNota!=='nao_possui'&&r.destNota!==r.origem&&r.origem===orig&&r.destNota===nota);
+  const addedRows=(_resumoOvrs.added||[]).map((r,i)=>({...r,tcId:'__added__',prodIdx:i,_resumoAdded:true})).filter(r=>r.origem===orig&&r.destNota===nota);
+  const rows=[...baseRows,...addedRows];
+
+  const overlay=document.createElement('div');
+  overlay.id='resumoEditOverlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow-y:auto';
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  const inner=document.createElement('div');
+  inner.style.cssText='background:#fff;border-radius:14px;padding:22px;width:100%;max-width:700px;box-shadow:0 8px 40px rgba(0,0,0,.22)';
+  inner.onclick=e=>e.stopPropagation();
+
+  // Header
+  const hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px';
+  hdr.innerHTML=`<h3 style="margin:0;font-size:15px;color:#1e293b">✏️ Editar Resumo — ${label}</h3>
+    <button type="button" onclick="document.getElementById('resumoEditOverlay').remove()" style="border:none;background:none;font-size:1.4rem;cursor:pointer;color:#6b7280">&times;</button>`;
+  inner.appendChild(hdr);
+
+  // Add product section
+  const catDiv=document.createElement('div');
+  catDiv.style.cssText='margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px';
+  catDiv.innerHTML=`
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📦 Adicionar produto</div>
+    <div style="display:grid;grid-template-columns:1fr 60px;gap:6px;align-items:end;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Produto</label>
+        <input id="rem-add-sku" placeholder="🔍 Digite SKU ou nome..." style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box" oninput="searchProdutoRem()" onblur="hideProdutoDropdownRem()" autocomplete="off">
+        <input type="hidden" id="rem-add-sku-real">
+        <input type="hidden" id="rem-add-nome">
+        <div id="rem-prod-selected" style="display:none;margin-top:3px;font-size:11px;color:#15803d;font-weight:600"></div>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
+        <input id="rem-add-qtd" type="number" min="1" value="1" style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box;text-align:center">
+      </div>
+    </div>
+    <button type="button" onclick="addResumoItemFromModal('${date}','${orig}','${nota}')" style="padding:6px 14px;background:#3b82f6;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Adicionar</button>`;
+  inner.appendChild(catDiv);
+
+  // Table of current rows
+  const tblWrap=document.createElement('div');
+  tblWrap.style.cssText='overflow-x:auto;margin-bottom:12px';
+  const tbl=document.createElement('table');
+  tbl.className='transf-table';
+  tbl.innerHTML='<thead><tr><th>SKU</th><th>Produto</th><th style="text-align:center">Qtd</th><th></th></tr></thead>';
+  const tbody=document.createElement('tbody');
+  tbody.id='rem-tbody';
+
+  function buildRows(){
+    tbody.innerHTML='';
+    const _ovrs=_resumoOverrides(date);
+    const _rmv=new Set(_ovrs.removed||[]);
+    // base rows
+    baseRows.forEach(r=>{
+      if(_rmv.has(r.tcId+'__'+r.prodIdx)) return;
+      const curQtd=(_ovrs.overrides&&_ovrs.overrides[r.tcId+'__'+r.prodIdx]?.qtd!=null)?_ovrs.overrides[r.tcId+'__'+r.prodIdx].qtd:r.qtd;
+      const tr=document.createElement('tr');
+      const qtdInp=document.createElement('input');
+      qtdInp.type='number'; qtdInp.min='0'; qtdInp.value=curQtd;
+      qtdInp.style.cssText='width:60px;padding:3px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;text-align:center';
+      qtdInp.onchange=()=>{
+        const o=_resumoOverrides(date);
+        const k=r.tcId+'__'+r.prodIdx;
+        o.overrides=o.overrides||{};
+        o.overrides[k]={...o.overrides[k],qtd:+qtdInp.value};
+        _saveResumoOverrides(date,o);
+      };
+      const delBtn=document.createElement('button');
+      delBtn.innerHTML='✕'; delBtn.title='Remover';
+      delBtn.style.cssText='border:none;background:none;color:#ef4444;cursor:pointer;font-size:14px;padding:2px 6px';
+      delBtn.onclick=()=>{
+        const o=_resumoOverrides(date);
+        const k=r.tcId+'__'+r.prodIdx;
+        if(!o.removed.includes(k))o.removed.push(k);
+        _saveResumoOverrides(date,o);
+        buildRows();
+      };
+      tr.innerHTML=`<td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td><td style="font-size:13px;font-weight:500">${r.nome||r.sku||'—'}</td>`;
+      const qtdTd=document.createElement('td'); qtdTd.style.textAlign='center'; qtdTd.appendChild(qtdInp);
+      const delTd=document.createElement('td'); delTd.style.textAlign='center'; delTd.appendChild(delBtn);
+      tr.appendChild(qtdTd); tr.appendChild(delTd);
+      tbody.appendChild(tr);
+    });
+    // added rows
+    const _curAdded=_resumoOverrides(date).added||[];
+    _curAdded.filter(r=>r.origem===orig&&r.destNota===nota).forEach((r,i)=>{
+      const realIdx=(_resumoOverrides(date).added||[]).findIndex((_r,ii)=>_r===r||(_r.sku===r.sku&&_r.origem===orig&&_r.destNota===nota&&ii===(_curAdded.filter(x=>x.origem===orig&&x.destNota===nota).indexOf(r))));
+      const tr=document.createElement('tr');
+      tr.style.background='#f5f3ff';
+      const delBtn=document.createElement('button');
+      delBtn.innerHTML='✕'; delBtn.title='Remover';
+      delBtn.style.cssText='border:none;background:none;color:#ef4444;cursor:pointer;font-size:14px;padding:2px 6px';
+      delBtn.onclick=()=>{
+        const o=_resumoOverrides(date);
+        // Remove this added row by matching sku+origem+nota
+        let removed=false;
+        o.added=(o.added||[]).filter(x=>{
+          if(!removed&&x.sku===r.sku&&x.origem===orig&&x.destNota===nota){removed=true;return false;}
+          return true;
+        });
+        _saveResumoOverrides(date,o);
+        buildRows();
+      };
+      tr.innerHTML=`<td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td><td style="font-size:13px;font-weight:500;color:#7c3aed">${r.nome||r.sku||'—'} <span style="font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:4px;padding:1px 4px">manual</span></td><td style="text-align:center;font-weight:700">${r.qtd}</td>`;
+      const delTd=document.createElement('td'); delTd.style.textAlign='center'; delTd.appendChild(delBtn);
+      tr.appendChild(delTd);
+      tbody.appendChild(tr);
+    });
+  }
+  buildRows();
+
+  tbl.appendChild(tbody); tblWrap.appendChild(tbl);
+  inner.appendChild(tblWrap);
+
+  // Close button
+  const closeBtn=document.createElement('button');
+  closeBtn.textContent='Fechar';
+  closeBtn.style.cssText='background:#f1f5f9;color:#374151;border:1px solid #e2e8f0;border-radius:8px;padding:8px 22px;font-size:13px;font-weight:600;cursor:pointer';
+  closeBtn.onclick=()=>{overlay.remove();_renderTransfContent();};
+  inner.appendChild(closeBtn);
+
+  overlay.appendChild(inner);
+  document.body.appendChild(overlay);
+}
+
+function addResumoItemFromModal(date, orig, nota){
+  const sku=(document.getElementById('rem-add-sku-real')||{}).value||(document.getElementById('rem-add-sku')||{}).value||'';
+  const nome=(document.getElementById('rem-add-nome')||{}).value||sku;
+  const qtd=+(document.getElementById('rem-add-qtd')||{value:1}).value||1;
+  if(!sku){toast('Selecione um produto','err');return;}
+  const ovrs=_resumoOverrides(date);
+  ovrs.added=ovrs.added||[];
+  ovrs.added.push({sku,nome,qtd,origem:orig,destNota:nota,destFisico:nota});
+  _saveResumoOverrides(date,ovrs);
+  // Clear fields
+  ['rem-add-sku','rem-add-sku-real','rem-add-nome'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const sel=document.getElementById('rem-prod-selected');if(sel){sel.style.display='none';sel.textContent='';}
+  const qtdEl=document.getElementById('rem-add-qtd');if(qtdEl)qtdEl.value=1;
+  // Rebuild the rows inside modal
+  openResumoEditModal(date,orig,nota);
+}
+
+let _remDropdownTimer=null;
+function searchProdutoRem(){
+  const inp=document.getElementById('rem-add-sku');
+  if(!inp)return;
+  const q=inp.value.trim().toLowerCase();
+  document.getElementById('rem-prod-selected').style.display='none';
+  if(!q){document.getElementById('rem-sku-drop')?.remove();return;}
+  const matches=(ST.catalog||[]).filter(p=>(p.sku||'').toLowerCase().includes(q)||(p.nome||'').toLowerCase().includes(q)).slice(0,8);
+  let drop=document.getElementById('rem-sku-drop');
+  if(!drop){drop=document.createElement('div');drop.id='rem-sku-drop';drop.style.cssText='position:absolute;z-index:10001;background:#fff;border:1px solid #d1d5db;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;width:300px';inp.parentNode.style.position='relative';inp.parentNode.appendChild(drop);}
+  drop.innerHTML='';
+  if(!matches.length){drop.innerHTML='<div style="padding:8px 12px;color:#9ca3af;font-size:12px">Nenhum produto encontrado</div>';return;}
+  matches.forEach(p=>{
+    const d=document.createElement('div');
+    d.style.cssText='padding:7px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f3f4f6';
+    d.innerHTML=`<span style="font-family:monospace;color:#6b7280;margin-right:6px">${p.sku||''}</span><strong>${p.nome||''}</strong>`;
+    d.onmousedown=()=>{
+      document.getElementById('rem-add-sku').value=p.nome||p.sku||'';
+      document.getElementById('rem-add-sku-real').value=p.sku||'';
+      document.getElementById('rem-add-nome').value=p.nome||'';
+      const sel=document.getElementById('rem-prod-selected');if(sel){sel.textContent=`✓ ${p.sku} — ${p.nome}`;sel.style.display='block';}
+      drop.remove();
+    };
+    drop.appendChild(d);
+  });
+}
+function hideProdutoDropdownRem(){setTimeout(()=>document.getElementById('rem-sku-drop')?.remove(),200);}
+
 function showResumoRowMenu(date, tcId, prodIdx, isAdded, btn){
   document.querySelectorAll('.resumo-row-menu').forEach(e=>e.remove());
   const rect=btn.getBoundingClientRect();
@@ -6459,7 +6645,6 @@ function _renderTransfResumo(el){
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <h3 style="margin:0;font-size:16px;color:#5b21b6">📊 Resumo do Dia</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button onclick="addResumoRow('${date}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">➕ Adicionar item</button>
       <button onclick="downloadTransfResumoExcel('${date}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">📥 Baixar Excel</button>
     </div>
   </div>`;
@@ -6489,7 +6674,10 @@ function _renderTransfResumo(el){
     const icmsMap=showCmc?getIcms():{};
     html += `<div class="transf-resumo-card" style="margin-bottom:14px;${transfDone?'opacity:.7':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <h4 style="margin:0;font-size:15px;color:#1e293b">🔀 ${route.label}</h4>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font-size:15px;color:#1e293b">🔀 ${route.label}</h4>
+          <button onclick="openResumoEditModal('${date}','${route.orig}','${route.nota}')" style="border:none;background:#f0f0ff;color:#7c3aed;cursor:pointer;font-size:17px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;line-height:1;flex-shrink:0" title="Editar itens deste grupo">⋯</button>
+        </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;${allSepDone?'background:#dcfce7;color:#15803d':'background:#f3f4f6;color:#4b5563'}">${allSepDone?'✓':'⏳'} Sep ${sepOk}/${total}</span>
           <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;${allRecDone?'background:#dcfce7;color:#15803d':'background:#f3f4f6;color:#4b5563'}">${allRecDone?'✓':'⏳'} Rec ${recOk}/${total}</span>
@@ -6528,10 +6716,7 @@ function _renderTransfResumo(el){
       const icmsPct=icmsMap[skuLc]??null;
       const cmcFinal=cmcVal!=null?cmcVal*(1+(icmsPct||0)):null;
       const rowBg=_rpt2?'background:#fff5f5':r._resumoAdded?'background:#f5f3ff':'';
-      // ⋯ menu button per row (matches per-location tab UX)
-      const editDel=(r._kitLabel)?'<td></td>':r._resumoAdded
-        ?`<td style="text-align:center"><button onclick="showResumoRowMenu('${date}','${r.tcId}',${r.prodIdx},true,this)" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:16px;padding:0 4px;border-radius:4px;line-height:1" title="Opções">⋯</button></td>`
-        :`<td style="text-align:center"><button onclick="showResumoRowMenu('${date}','${r.tcId}',${r.prodIdx},false,this)" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:16px;padding:0 4px;border-radius:4px;line-height:1" title="Opções">⋯</button></td>`;
+      const editDel='<td></td>';
       const rptNote2=_rpt2?`<tr style="background:#fff5f5"><td colspan="${showCmc?9:7}" style="padding:3px 8px 5px 16px;font-size:11px;color:#dc2626"><strong>⚠ ${_rpt2.tab||'Reporte'}:</strong> ${esc(_rpt2.obs)}</td></tr>`:'';
       html += `<tr style="${rowBg}">
         <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
