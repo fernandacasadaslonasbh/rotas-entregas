@@ -734,6 +734,16 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
       </div>
     </div>
 
+    <!-- Sincronização Omie -->
+    <div class="adm-section">
+      <h3>🔄 Sincronização Omie</h3>
+      <p style="font-size:0.82rem;color:#6b7280;margin:0 0 10px">O catálogo de produtos, composição de kits e CMC são atualizados automaticamente <strong>todos os dias às 15:30</strong>.<br>Use o botão abaixo para sincronizar agora sem precisar aguardar.</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="btn-sincronizar-omie" class="btn btn-primary btn-sm" onclick="sincronizarOmieAgora()" style="background:#0ea5e9;border-color:#0ea5e9">🔄 Sincronizar Agora</button>
+        <span id="sync-omie-status" style="font-size:0.8rem;color:#6b7280"></span>
+      </div>
+    </div>
+
     <!-- Catálogo de Produtos -->
     <div class="adm-section">
       <h3>📦 Catálogo de Produtos</h3>
@@ -2986,6 +2996,13 @@ function switchTab(tab){
     admRenderCatalogo();
     admLoadLocais();
     renderAdminMotoristas();
+    // Mostrar última sincronização
+    if(_fbDb){
+      _fbDb.ref('cdl_config/ultima_sincronizacao').once('value').then(snap=>{
+        const st=document.getElementById('sync-omie-status');
+        if(st&&snap.val())st.innerHTML=`<span style="color:#6b7280">Última sync: ${snap.val()}</span>`;
+      }).catch(()=>{});
+    }
     renderAdminVeiculos();
     populateAdminVeicSelect();
     renderAdminMdfe();
@@ -4174,6 +4191,40 @@ function renderColetaSeq(d){
     ${mapsUrl?`<a class="coleta-maps-btn" href="${mapsUrl}" target="_blank">🗺 Abrir rota completa no Maps</a>`:''}
   </div>`;
 }
+// ── Sincronização Omie ─────────────────────────────────────
+async function sincronizarOmieAgora(){
+  const btn=document.getElementById('btn-sincronizar-omie');
+  const st=document.getElementById('sync-omie-status');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Sincronizando...';}
+  if(st)st.textContent='Aguarde...';
+  try{
+    const r=await fetch('/api/sincronizar',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(d.ok){
+      if(st)st.innerHTML=`<span style="color:#16a34a">✓ Sincronizado às ${d.ultima} — ${d.produtos} produtos, ${d.kits} kits, ${d.cmc} CMCs</span>`;
+      toast('Catálogo sincronizado com o Omie ✓','ok');
+      // Recarrega o catálogo do Firebase
+      if(_fbDb){
+        const snap=await _fbDb.ref('cdl_config').once('value');
+        const cfg=snap.val()||{};
+        if(cfg.catalogo)localStorage.setItem('cdl_catalogo',JSON.stringify(cfg.catalogo));
+        if(cfg.catalogo_kits)localStorage.setItem('cdl_kits',JSON.stringify(cfg.catalogo_kits));
+        if(cfg.catalogo_cmc)localStorage.setItem('cdl_cmc',JSON.stringify(cfg.catalogo_cmc));
+        if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
+      }
+    } else {
+      if(st)st.innerHTML=`<span style="color:#dc2626">✗ Erro: ${d.erro||'desconhecido'}</span>`;
+      toast('Erro na sincronização: '+(d.erro||'ver console'),'err');
+    }
+  }catch(e){
+    if(st)st.innerHTML=`<span style="color:#dc2626">✗ Falha na conexão</span>`;
+    toast('Erro ao chamar /api/sincronizar','err');
+    console.error(e);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔄 Sincronizar Agora';}
+  }
+}
+
 // ── Catálogo de Produtos ─────────────────────────────────────
 function getCatalogo(){try{return JSON.parse(localStorage.getItem('cdl_catalogo')||'{}');}catch{return {};}}
 function getKits(){try{return JSON.parse(localStorage.getItem('cdl_kits')||'{}');}catch{return {};}}
