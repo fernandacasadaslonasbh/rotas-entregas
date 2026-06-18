@@ -1,6 +1,6 @@
 /**
  * Vercel Serverless Function — saldo físico do CD no Omie
- * Usa ObterEstoqueProduto (estoque/resumo) → campo nSaldoFisico por localEstoque
+ * ObterEstoqueProduto → listaEstoque[nIdlocal=CD].fisico
  */
 
 export const maxDuration = 60;
@@ -8,7 +8,7 @@ export const maxDuration = 60;
 const APP_KEY    = '5490393509601';
 const APP_SECRET = '63b1bb40caba6f37c7814735bf637acd';
 const URL_EST    = 'https://app.omie.com.br/api/v1/estoque/resumo/';
-const COD_LOCAL  = 11264312395; // CD
+const ID_LOCAL   = 11264312395; // Local de Estoque Padrão (CD)
 
 const hoje = () => new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
@@ -25,29 +25,18 @@ async function getSaldo(sku) {
       })
     });
     const data = await r.json();
-
-    if (data.faultstring) {
-      console.log(`[estoque] SKU ${sku} fault: ${data.faultstring}`);
-      return null;
-    }
+    if (data.faultstring) return null;
 
     const lista = data.listaEstoque || [];
-    if (!lista.length) {
-      console.log(`[estoque] SKU ${sku}: listaEstoque vazia. Keys: ${Object.keys(data).join(',')}`);
-      return 0;
-    }
+    if (!lista.length) return 0;
 
-    // Log do primeiro item para debug
-    console.log(`[estoque] SKU ${sku} primeiro item keys: ${Object.keys(lista[0]).join(',')}`);
-
-    // Tenta localizar o CD específico; se não achar, usa primeiro da lista
-    const local = lista.find(e => e.nCodLocalEstoque === COD_LOCAL) || lista[0];
-
-    // Tenta os possíveis nomes do campo de saldo físico no Omie
-    const saldo = local.nSaldoFisico ?? local.nSaldo ?? local.saldo_fisico ?? local.nEstoque ?? 0;
+    // Procura o local específico (CD); se não achar, usa o primeiro
+    const local = lista.find(e => e.nIdlocal === ID_LOCAL) || lista[0];
+    // Campo correto é "fisico"; nSaldo é alias
+    const saldo = local.fisico ?? local.nSaldo ?? 0;
     return typeof saldo === 'number' ? saldo : parseFloat(saldo) || 0;
   } catch (e) {
-    console.error(`[estoque] SKU ${sku} erro: ${e.message}`);
+    console.error(`[estoque] ${sku}: ${e.message}`);
     return null;
   }
 }
