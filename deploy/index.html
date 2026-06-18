@@ -6623,6 +6623,9 @@ function saveSectionEdit(date, loc, type, origRows){
         if(qtd!==(orig.qtd||1)) diffs.push('qtd '+(orig.qtd||1)+'→'+qtd);
         if(sku!==(orig.sku||'')) diffs.push('SKU '+orig.sku+'→'+sku);
         if(nome!==(orig.nome||'')) diffs.push('nome alterado');
+        if(origem!==(orig.origem||'')) diffs.push('origem '+orig.origem+'→'+origem);
+        if(destFisico!==(orig.destFisico||'')) diffs.push('destino '+orig.destFisico+'→'+destFisico);
+        if(destNota!==(orig.destNota||'nao_possui')) diffs.push('NF '+(orig.destNota||'nao_possui')+'→'+destNota);
         if(diffs.length){
           // converte edição de original em remove + extra
           newRemoved.push(tr.dataset.tcId+'__'+tr.dataset.prodIdx);
