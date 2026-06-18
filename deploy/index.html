@@ -5762,7 +5762,7 @@ function consultarEstoqueCD(date){
     .then(r=>r.json())
     .then(data=>{
       if(data.erro){toast('Erro Omie: '+data.erro,'err');return;}
-      window._estoqueData=window._estoqueData||{};
+      window._estoqueData={};  // Limpa dados anteriores para evitar mistura de versões
       Object.entries(data).forEach(([sku,saldo])=>{window._estoqueData[sku.toUpperCase()]=saldo;});
       _renderTransfContent();
       toast('Estoque atualizado ✓','ok');
