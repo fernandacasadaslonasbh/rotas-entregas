@@ -1710,6 +1710,10 @@ function panelHTML(per,data,title,perStartOverride,lunchBannerOverride){
         <strong>${arrStr}</strong>
         ${depStr?`<div class="r-dep">saída ${depStr}</div>`:''}
       </div>
+      ${editingRoute&&s.type==='tc'?`<span style="display:flex;flex-direction:column;gap:1px;margin-left:2px">
+        <button onclick="moveStop('${per}',${i},-1)" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#6b7280;padding:0;line-height:1" title="Mover para cima">&#9650;</button>
+        <button onclick="moveStop('${per}',${i},1)" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#6b7280;padding:0;line-height:1" title="Mover para baixo">&#9660;</button>
+      </span>`:''}
       ${editingRoute&&cd?`<button class="r-del" onclick="remStop('${per}',${i})">&#x2715;</button>`:''}
     </li>`;
     if(editingRoute&&s.type!=='return')sl+=`<li class="ins-row"><button class="ins-btn" onclick="openStop('${per}',${i})">+ parada</button></li>`;
@@ -1921,6 +1925,17 @@ function togRestHorario(){
   if(bs)bs.style.cssText=bs.style.cssText.replace(/background:[^;]+/,'background:'+(v==='sim'?'#fee2e2':'#f9fafb'));
   if(bs)bs.style.color=v==='sim'?'#991b1b':'#374151';
   if(bs)bs.style.borderColor=v==='sim'?'#fca5a5':'#d1d5db';
+}
+function moveStop(per,i,dir){
+  const plan=curPlan();if(!plan)return;
+  const stops=plan[per].stops;
+  const j=i+dir;
+  if(j<1||j>=stops.length||stops[j]?.type==='start'||stops[j]?.type==='return')return;
+  [stops[i],stops[j]]=[stops[j],stops[i]];
+  plan[per].legDurs=[];plan[per].legDists=[];plan[per].totalDist=0;plan[per].totalDur=0;
+  addRouteHistorico('Reordenação manual',editingBy||'Sistema');
+  save();reRenderPanels();
+  showL('Recalculando...');recalcPer(per).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
 }
 function ulDrop(e,per){
   e.preventDefault();
