@@ -5762,10 +5762,24 @@ function consultarEstoqueCD(date){
     .then(r=>r.json())
     .then(data=>{
       if(data.erro){toast('Erro Omie: '+data.erro,'err');return;}
-      window._estoqueData={};  // Limpa dados anteriores para evitar mistura de versões
-      Object.entries(data).forEach(([sku,saldo])=>{window._estoqueData[sku.toUpperCase()]=saldo;});
+      window._estoqueData={};
+      // Cada entry agora é {fisico, cmc} — extrai e atualiza CMC no localStorage também
+      const cmcAtual=getCmc();
+      let cmcAtualizado=false;
+      Object.entries(data).forEach(([sku,val])=>{
+        if(val && typeof val==='object'){
+          window._estoqueData[sku.toUpperCase()]=val.fisico??null;
+          if(val.cmc!=null){cmcAtual[sku.toLowerCase()]=val.cmc;cmcAtualizado=true;}
+        } else {
+          window._estoqueData[sku.toUpperCase()]=val;
+        }
+      });
+      if(cmcAtualizado){
+        localStorage.setItem('cdl_cmc',JSON.stringify(cmcAtual));
+        if(_fbDb)_fbDb.ref('cdl_config/catalogo_cmc').set(cmcAtual).catch(e=>console.warn(e));
+      }
       _renderTransfContent();
-      toast('Estoque atualizado ✓','ok');
+      toast('Estoque e CMC atualizados ✓','ok');
     })
     .catch(e=>{toast('Erro ao consultar estoque','err');console.error(e);})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent='🏭 Estoque CD';}});
