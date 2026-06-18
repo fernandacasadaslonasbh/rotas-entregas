@@ -490,20 +490,28 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
   .period-hdr{flex-wrap:wrap;gap:4px}
 
   /* ── SCROLL FIX: libera scroll natural da página no mobile ── */
-  body{height:auto!important;overflow-x:hidden!important;overflow-y:auto!important;min-height:100vh;max-width:100vw}
-  .appbody{overflow:hidden!important;flex:none;min-height:0;width:100%;max-width:100vw}
-  .content{overflow-x:hidden!important;overflow-y:visible!important;height:auto!important;flex:none;width:100%;box-sizing:border-box;min-width:0}
-  .sidebar{position:fixed;height:100vh;overflow-y:auto;width:80vw;max-width:260px}
-  
-  /* Prevent any child from causing horizontal overflow */
-  .cards-grid,.cards-sec,.period-section,.route-cols,.rpanel,
-  .r-stop,.card,.sb-actions,.sb-days{max-width:100%;min-width:0;box-sizing:border-box}
-  
+  body{height:auto!important;overflow-x:hidden!important;overflow-y:auto!important;min-height:100vh}
+  .appbody{overflow:visible!important;flex:none;min-height:0;width:100vw;max-width:100vw}
+  .content{overflow-x:clip!important;overflow-y:visible!important;height:auto!important;flex:none;width:100%;box-sizing:border-box;min-width:0;padding:10px 8px}
+
+  /* Sidebar: escondida com transform para não vazar */
+  .sidebar{
+    position:fixed!important;
+    top:0;left:0;bottom:0;
+    width:80vw!important;max-width:260px!important;
+    height:100vh;overflow-y:auto;
+    transform:translateX(-100%);
+    transition:transform .25s ease;
+  }
+  .sidebar.sb-open{transform:translateX(0)!important}
+
   /* Cards must not overflow */
-  .card{word-break:break-word;overflow:hidden}
+  .card{word-break:break-word;box-sizing:border-box;min-width:0}
   
-  /* Gestão route section */
-  #routeSection{max-width:100%;overflow-x:hidden}
+  /* Route stops: não cortar conteúdo */
+  .r-stop{flex-wrap:wrap;gap:4px;min-width:0}
+  .rpanel{box-sizing:border-box;min-width:0}
+  #routeSection,#routeSection *{box-sizing:border-box;min-width:0}
 }
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -1159,6 +1167,8 @@ const STOP_MIN=30,MANHA_MIN=90,TARDE_MIN=90,BASE_CAP=3;
 function toggleSidebar(){
   const sb=document.getElementById('sidebar-main');
   const ov=document.getElementById('sb-overlay');
+  // Only drawer behavior on mobile
+  if(window.innerWidth>768)return;
   const open=sb.classList.toggle('sb-open');
   ov.classList.toggle('active',open);
 }
