@@ -5670,8 +5670,54 @@ function toggleTransfCheck(date, tcId, prodIdx, type, cb){
   const k = _chkKey(tcId,prodIdx,type);
   ST.transfChecks[date][k] = cb.checked;
   save();
-  // Re-render resumo if active to update row styling
+  // Atualiza visualmente a linha e re-renderiza a aba atual
+  _updateCheckRowStyle(date, tcId, prodIdx, type, cb.checked);
   if(_transfSub==='Resumo') _renderTransfContent();
+}
+function _updateCheckRowStyle(date, tcId, prodIdx, type, checked){
+  // Atualiza o badge da origem/destino da linha sem re-renderizar tudo
+  const sepDone = _getCheck(date, tcId, prodIdx, 'sep');
+  const recDone = _getCheck(date, tcId, prodIdx, 'rec');
+  // Encontrar a linha pelo checkbox que foi clicado e atualizar badges vizinhos
+  const rows = document.querySelectorAll('tr[data-tcid="'+tcId+'"][data-pidx="'+prodIdx+'"]');
+  rows.forEach(tr=>{
+    const origBadge = tr.querySelector('.badge-orig');
+    const destBadge = tr.querySelector('.badge-dest');
+    if(origBadge){
+      origBadge.style.background = sepDone ? '#dcfce7' : '#f3f4f6';
+      origBadge.style.color = sepDone ? '#15803d' : '#4b5563';
+      origBadge.style.borderColor = sepDone ? '#bbf7d0' : '#e5e7eb';
+    }
+    if(destBadge){
+      destBadge.style.background = recDone ? '#dcfce7' : '#f3f4f6';
+      destBadge.style.color = recDone ? '#15803d' : '#4b5563';
+      destBadge.style.borderColor = recDone ? '#bbf7d0' : '#e5e7eb';
+    }
+    if(sepDone && recDone){
+      tr.style.background = '#f0fdf4';
+    } else {
+      tr.style.background = '';
+    }
+  });
+}
+function consultarEstoqueCD(date){
+  const btn=document.getElementById('btn-estoque-'+date);
+  if(btn){btn.disabled=true;btn.textContent='⏳ Consultando...';}
+  // Collect unique SKUs from resumo rows
+  const allRows=_buildResumoRows(date);
+  const skus=[...new Set(allRows.map(r=>(r.sku||'').toUpperCase()).filter(Boolean))];
+  if(!skus.length){toast('Nenhum SKU encontrado','err');if(btn){btn.disabled=false;btn.textContent='🏭 Estoque CD';}return;}
+  fetch('/api/estoque',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus})})
+    .then(r=>r.json())
+    .then(data=>{
+      if(data.erro){toast('Erro Omie: '+data.erro,'err');return;}
+      window._estoqueData=window._estoqueData||{};
+      Object.entries(data).forEach(([sku,saldo])=>{window._estoqueData[sku.toUpperCase()]=saldo;});
+      _renderTransfContent();
+      toast('Estoque atualizado ✓','ok');
+    })
+    .catch(e=>{toast('Erro ao consultar estoque','err');console.error(e);})
+    .finally(()=>{if(btn){btn.disabled=false;btn.textContent='🏭 Estoque CD';}});
 }
 function toggleTransfRouteCheck(date, orig, nota, cb){
   if(!ST.transfChecks[date]) ST.transfChecks[date] = {};
@@ -6418,12 +6464,12 @@ function _buildSectionTable(rows, date, type){
     const rowStyle=_rpt?'background:#fff7ed':(isMirror?'background:#f0f9ff;opacity:.85':'');
     const rptBtn=`<button onclick="openTransfReport('${date}','${r.tcId}',${r.prodIdx},'${type}',this)" style="border:none;background:${_rpt?'#fee2e2':'none'};color:${_rpt?'#dc2626':'#d1d5db'};cursor:pointer;font-size:12px;padding:2px 5px;border-radius:5px;font-weight:${_rpt?'700':'400'}" title="${_rpt?'Reportado':'Reportar problema'}">⚠</button>`;
     const rptNote=_rpt?`<tr style="background:#fff7ed"><td colspan="8" style="padding:3px 8px 5px 24px;font-size:11px;color:#dc2626"><strong>⚠ Reportado:</strong> ${esc(_rpt.obs)}</td></tr>`:'';
-    h+=`<tr style="${chk?'opacity:.6;':''} ${rowStyle}">
+    h+=`<tr data-tcid="${r.tcId}" data-pidx="${r.prodIdx}" style="${chk?'opacity:.6;':''} ${rowStyle}">
       <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
       <td style="font-weight:500;font-size:13px">${r.nome||r.sku||'—'}${label}${badge}</td>
       <td style="text-align:center;font-weight:700">${r.qtd}</td>
-      <td><span style="background:${origBg};color:${origCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${r.origem||'—'}</span>${dblChk}</td>
-      <td><span style="background:${destBg};color:${destCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${r.destFisico||'—'}</span>${dblChk}</td>
+      <td><span class="badge-orig" style="background:${origBg};color:${origCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ${sepDone?'#bbf7d0':'#e5e7eb'}">${r.origem||'—'}</span>${dblChk}</td>
+      <td><span class="badge-dest" style="background:${destBg};color:${destCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ${recDone?'#bbf7d0':'#e5e7eb'}">${r.destFisico||'—'}</span>${dblChk}</td>
       <td style="font-size:12px;color:#374151">${nf}</td>
       <td style="text-align:center"><input type="checkbox" class="transf-check"${chk?' checked':''}
         onchange="toggleTransfCheck('${date}','${r.tcId}',${r.prodIdx},'${type}',this)"
@@ -6854,6 +6900,7 @@ function _renderTransfResumo(el){
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <h3 style="margin:0;font-size:16px;color:#5b21b6">📊 Resumo do Dia</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="consultarEstoqueCD('${date}')" id="btn-estoque-${date}" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">🏭 Estoque CD</button>
       <button onclick="downloadTransfResumoExcel('${date}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">📥 Baixar Excel</button>
     </div>
   </div>`;
@@ -6903,6 +6950,7 @@ function _renderTransfResumo(el){
         <thead><tr>
           <th>SKU</th><th>Produto</th><th style="text-align:center">Qtd</th>
           <th>Origem</th><th>Destino Físico</th><th>NF</th>
+          <th style="text-align:center;color:#0369a1;white-space:nowrap">Estoque CD</th>
           ${showCmc?'<th style="text-align:right;color:#b45309">CMC (R$)</th>':''}
           ${showCmc?'<th style="text-align:right;color:#7c3aed">CMC Final (R$)</th>':''}
           <th></th>
@@ -6926,7 +6974,7 @@ function _renderTransfResumo(el){
       const cmcFinal=cmcVal!=null?cmcVal*(1+(icmsPct||0)):null;
       const rowBg=_rpt2?'background:#fff5f5':r._resumoAdded?'background:#f5f3ff':'';
       const editDel='<td></td>';
-      const rptNote2=_rpt2?`<tr style="background:#fff5f5"><td colspan="${showCmc?9:7}" style="padding:3px 8px 5px 16px;font-size:11px;color:#dc2626"><strong>⚠ ${_rpt2.tab||'Reporte'}:</strong> ${esc(_rpt2.obs)}</td></tr>`:'';
+      const rptNote2=_rpt2?`<tr style="background:#fff5f5"><td colspan="${showCmc?10:8}" style="padding:3px 8px 5px 16px;font-size:11px;color:#dc2626"><strong>⚠ ${_rpt2.tab||'Reporte'}:</strong> ${esc(_rpt2.obs)}</td></tr>`:'';
       html += `<tr style="${rowBg}">
         <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
         <td style="font-weight:500;font-size:13px">${r.nome||r.sku||'—'}${kitTag}${label}</td>
@@ -6934,6 +6982,7 @@ function _renderTransfResumo(el){
         <td><span style="background:${origemBg};color:${origemColor};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${sepDone?'✓ ':''  }${r.origem||'—'}</span></td>
         <td><span style="background:${destBg};color:${destColor};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${recDone?'✓ ':''}${r.destFisico||'—'}</span></td>
         <td style="font-size:12px;color:#374151">${nf}</td>
+        <td style="text-align:center;font-size:12px">${(()=>{const _sk=(r.sku||'').toUpperCase();const _e=window._estoqueData&&window._estoqueData[_sk];if(_e==null)return '<span style="color:#9ca3af;font-size:11px">—</span>';const _ec=parseFloat(_e);const _col=_ec<=0?'#dc2626':_ec<r.qtd?'#d97706':'#16a34a';return '<span style="font-weight:700;color:'+_col+'">'+_ec.toLocaleString('pt-BR',{maximumFractionDigits:2})+'</span>';})()} </td>
         ${showCmc?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${cmcVal!=null?'R$ '+cmcVal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'}</td>`:''}
         ${showCmc?(()=>{if(!showCmc)return '';const pctTag=icmsPct?`<br><span style="font-size:10px;color:#9333ea;font-weight:400">+${(icmsPct*100).toFixed(2)}%</span>`:'';return `<td style="text-align:right;font-size:12px;color:#7c3aed;font-weight:600">${cmcFinal!=null?'R$ '+cmcFinal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})+pctTag:'—'}</td>`;})():''}
         ${editDel}
