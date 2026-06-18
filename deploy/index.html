@@ -5474,6 +5474,188 @@ function toggleTransfRouteCheck(date, orig, nota, cb){
   _renderTransfContent();
 }
 
+// ── Report helpers ─────────────────────────────────────────
+function _rptKey(tcId, prodIdx, type){ return 'rpt__'+tcId+'__'+prodIdx+'__'+type; }
+function _getReport(date, tcId, prodIdx, type){
+  return ((ST.transfChecks[date]||{})[_rptKey(tcId,prodIdx,type)])||null;
+}
+function openTransfReport(date, tcId, prodIdx, type, btn){
+  document.querySelectorAll('.transf-report-pop').forEach(e=>e.remove());
+  const existing=_getReport(date,tcId,prodIdx,type);
+  const pop=document.createElement('div');
+  pop.className='transf-report-pop';
+  // Store params as dataset to avoid quote-escaping issues
+  pop.dataset.rdate=date; pop.dataset.rtcId=tcId; pop.dataset.rprodIdx=prodIdx; pop.dataset.rtype=type;
+  pop.style.cssText='position:fixed;z-index:9999;background:#fff;border:1px solid #fca5a5;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.2);padding:14px;min-width:260px;max-width:320px;font-size:13px';
+  const rect=btn.getBoundingClientRect();
+  pop.style.top=(rect.bottom+6)+'px';
+  pop.style.left=Math.min(rect.left,window.innerWidth-330)+'px';
+  const ta=document.createElement('textarea');
+  ta.id='rptObs';ta.placeholder='Descreva o problema (ex: quantidade incorreta, produto faltando...)';
+  ta.style.cssText='width:100%;height:80px;border:1px solid #fca5a5;border-radius:7px;padding:6px;font-size:12px;box-sizing:border-box;resize:vertical;margin-top:8px';
+  if(existing)ta.value=existing.obs;
+  const saveBtn=document.createElement('button');
+  saveBtn.textContent='💾 Salvar';
+  saveBtn.style.cssText='flex:1;background:#dc2626;color:#fff;border:none;border-radius:7px;padding:6px;font-weight:700;cursor:pointer;font-size:12px';
+  saveBtn.onclick=()=>_saveTransfReport(pop);
+  const btns=document.createElement('div');
+  btns.style.cssText='display:flex;gap:6px;margin-top:8px';
+  btns.appendChild(saveBtn);
+  if(existing){
+    const clrBtn=document.createElement('button');
+    clrBtn.textContent='Limpar';
+    clrBtn.style.cssText='background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:7px;padding:6px;font-weight:600;cursor:pointer;font-size:12px';
+    clrBtn.onclick=()=>_clearTransfReport(pop);
+    btns.appendChild(clrBtn);
+  }
+  const closeBtn=document.createElement('button');
+  closeBtn.textContent='✕';
+  closeBtn.style.cssText='background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:7px;padding:6px;cursor:pointer;font-size:12px';
+  closeBtn.onclick=()=>pop.remove();
+  btns.appendChild(closeBtn);
+  const title=document.createElement('div');
+  title.style.cssText='font-weight:700;color:#dc2626;margin-bottom:4px';
+  title.textContent='⚠ Reportar problema';
+  pop.appendChild(title);pop.appendChild(ta);pop.appendChild(btns);
+  document.body.appendChild(pop);
+  setTimeout(()=>ta.focus(),50);
+  setTimeout(()=>document.addEventListener('click',function h(e){if(!pop.contains(e.target)&&e.target!==btn){pop.remove();document.removeEventListener('click',h);}},true),10);
+}
+function _saveTransfReport(pop){
+  const obs=(pop.querySelector('#rptObs')||{}).value||'';
+  if(!obs.trim()){toast('Escreva uma observação antes de salvar','err');return;}
+  const {rdate:date,rtcId:tcId,rprodIdx:prodIdx,rtype:type}=pop.dataset;
+  if(!ST.transfChecks[date]) ST.transfChecks[date]={};
+  const rk=_rptKey(tcId,+prodIdx,type);
+  const tabNow=_transfSub||'';
+  ST.transfChecks[date][rk]={obs:obs.trim(),at:new Date().toLocaleString('pt-BR'),tab:tabNow};
+  if(!ST.transfChecks[date]['__tabAlerts__']) ST.transfChecks[date]['__tabAlerts__']=[];
+  if(tabNow&&!ST.transfChecks[date]['__tabAlerts__'].includes(tabNow))
+    ST.transfChecks[date]['__tabAlerts__'].push(tabNow);
+  save(); pop.remove(); _renderTransfContent();
+  toast('Problema reportado!','ok');
+}
+function _clearTransfReport(pop){
+  const {rdate:date,rtcId:tcId,rprodIdx:prodIdx,rtype:type}=pop.dataset;
+  if(ST.transfChecks[date]) delete ST.transfChecks[date][_rptKey(tcId,+prodIdx,type)];
+  save(); pop.remove(); _renderTransfContent();
+  toast('Reporte removido','ok');
+}
+// ── Resumo overrides (edição no Resumo) ────────────────────
+function _resumoOverrides(date){ return ((ST.transfLocEdits||{})[date]||{})['__resumo__']||{overrides:{},removed:[],added:[]}; }
+function _saveResumoOverrides(date, obj){
+  if(!ST.transfLocEdits) ST.transfLocEdits={};
+  if(!ST.transfLocEdits[date]) ST.transfLocEdits[date]={};
+  ST.transfLocEdits[date]['__resumo__']=obj; save();
+}
+function openResumoRowEdit(date, tcId, prodIdx, btn){
+  document.querySelectorAll('.resumo-edit-pop').forEach(e=>e.remove());
+  const ovrs=_resumoOverrides(date);
+  const key=tcId+'__'+prodIdx;
+  const cur=ovrs.overrides[key]||{};
+  // Find original row to prefill
+  let origQtd=1;
+  (ST.transfers||[]).forEach(t=>{if(t.id===tcId&&t.produtos&&t.produtos[prodIdx])origQtd=t.produtos[prodIdx].qtd||1;});
+  const qtdNow=cur.qtd!=null?cur.qtd:origQtd;
+  const pop=document.createElement('div');
+  pop.className='resumo-edit-pop';
+  pop.style.cssText='position:fixed;z-index:9999;background:#fff;border:1px solid #a78bfa;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.2);padding:14px;min-width:220px;font-size:13px';
+  const rect=btn.getBoundingClientRect();
+  pop.style.top=(rect.bottom+6)+'px'; pop.style.left=Math.min(rect.left,window.innerWidth-240)+'px';
+  const _reTitle=document.createElement('div');
+  _reTitle.style.cssText='font-weight:700;color:#7c3aed;margin-bottom:8px';
+  _reTitle.textContent='✏️ Editar no Resumo';
+  const _reLbl=document.createElement('label');
+  _reLbl.style.cssText='font-size:12px;color:#6b7280';
+  _reLbl.textContent='Quantidade';
+  const _reInp=document.createElement('input');
+  _reInp.id='resumoEditQtd';
+  _reInp.type='number';
+  _reInp.min='0';
+  _reInp.value=qtdNow;
+  _reInp.style.cssText='width:100%;margin-top:4px;margin-bottom:10px;border:1px solid #a78bfa;border-radius:7px;padding:5px 8px;font-size:14px;font-weight:700;text-align:center;box-sizing:border-box';
+  const _reBtns=document.createElement('div');
+  _reBtns.style.cssText='display:flex;gap:6px';
+  const _reSave=document.createElement('button');
+  _reSave.style.cssText='flex:1;background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:6px;font-weight:700;cursor:pointer;font-size:12px';
+  _reSave.textContent='Salvar';
+  _reSave.onclick=()=>saveResumoRowEdit(date,tcId,prodIdx);
+  const _reClose=document.createElement('button');
+  _reClose.style.cssText='background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:7px;padding:6px;cursor:pointer;font-size:12px';
+  _reClose.textContent='✕';
+  _reClose.onclick=()=>pop.remove();
+  _reBtns.appendChild(_reSave); _reBtns.appendChild(_reClose);
+  pop.appendChild(_reTitle); pop.appendChild(_reLbl); pop.appendChild(_reInp); pop.appendChild(_reBtns);
+  document.body.appendChild(pop);
+  setTimeout(()=>{const el=document.getElementById('resumoEditQtd');if(el){el.focus();el.select();}},50);
+  setTimeout(()=>document.addEventListener('click',function h(e){if(!pop.contains(e.target)&&e.target!==btn){pop.remove();document.removeEventListener('click',h);}},true),10);
+}
+function saveResumoRowEdit(date, tcId, prodIdx){
+  const val=+(document.getElementById('resumoEditQtd')||{}).value;
+  if(isNaN(val)||val<0){toast('Quantidade inválida','err');return;}
+  const ovrs=_resumoOverrides(date);
+  const key=tcId+'__'+prodIdx;
+  ovrs.overrides[key]={...ovrs.overrides[key],qtd:val};
+  _saveResumoOverrides(date,ovrs);
+  document.querySelectorAll('.resumo-edit-pop').forEach(e=>e.remove());
+  _renderTransfContent();
+  toast('Quantidade atualizada no Resumo','ok');
+}
+function deleteResumoRow(date, tcId, prodIdx){
+  if(!confirm('Remover este item do Resumo?')) return;
+  const ovrs=_resumoOverrides(date);
+  const key=tcId+'__'+prodIdx;
+  if(!ovrs.removed.includes(key)) ovrs.removed.push(key);
+  _saveResumoOverrides(date,ovrs);
+  _renderTransfContent();
+  toast('Item removido do Resumo','ok');
+}
+function addResumoRow(date){
+  const ov=document.createElement('div');
+  ov.id='resumoAddOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const LOCS=['CD','Matriz','Filial','Cliente'];
+  const nfOpts=['nao_possui','CD','Matriz','Filial'].map(v=>`<option value="${v}">${v==='nao_possui'?'Não possui':v}</option>`).join('');
+  const selOpts=(arr)=>arr.map(v=>`<option value="${v}">${v}</option>`).join('');
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:24px 28px;max-width:440px;width:93%;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:1rem;color:#7c3aed">➕ Adicionar item ao Resumo</h3>
+      <button onclick="document.getElementById('resumoAddOverlay').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#9ca3af">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div><label style="font-size:11px;color:#6b7280;font-weight:600">SKU</label><input id="rasku" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:7px;padding:6px;font-size:13px"></div>
+      <div><label style="font-size:11px;color:#6b7280;font-weight:600">Quantidade</label><input id="raqtd" type="number" min="1" value="1" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:7px;padding:6px;font-size:13px;text-align:center"></div>
+    </div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:#6b7280;font-weight:600">Produto / Descrição</label><input id="ranome" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:7px;padding:6px;font-size:13px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><label style="font-size:11px;color:#6b7280;font-weight:600">Origem</label><select id="raorigem" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:7px;padding:6px;font-size:13px">${selOpts(LOCS)}</select></div>
+      <div><label style="font-size:11px;color:#6b7280;font-weight:600">Destino Físico</label><select id="radest" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:7px;padding:6px;font-size:13px">${selOpts(LOCS)}</select></div>
+      <div><label style="font-size:11px;color:#6b7280;font-weight:600">NF</label><select id="ranf" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:7px;padding:6px;font-size:13px">${nfOpts}</select></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmAddResumoRow('${date}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:9px;font-weight:700;cursor:pointer">➕ Adicionar</button>
+      <button onclick="document.getElementById('resumoAddOverlay').remove()" style="padding:9px 14px;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:8px;font-weight:600;cursor:pointer">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function confirmAddResumoRow(date){
+  const sku=(document.getElementById('rasku')||{}).value||'';
+  const nome=(document.getElementById('ranome')||{}).value||'';
+  const qtd=+(document.getElementById('raqtd')||{}).value||1;
+  const origem=(document.getElementById('raorigem')||{}).value||'CD';
+  const destFisico=(document.getElementById('radest')||{}).value||'Matriz';
+  const destNota=(document.getElementById('ranf')||{}).value||'nao_possui';
+  if(!nome.trim()&&!sku.trim()){toast('Preencha SKU ou nome do produto','err');return;}
+  const ovrs=_resumoOverrides(date);
+  if(!ovrs.added) ovrs.added=[];
+  ovrs.added.push({sku,nome:nome||sku,qtd,origem,destFisico,destNota,_resumoAdded:true});
+  _saveResumoOverrides(date,ovrs);
+  const ov=document.getElementById('resumoAddOverlay');if(ov)ov.remove();
+  _renderTransfContent();
+  toast('Item adicionado ao Resumo','ok');
+}
+
 function _renderTransfContent(){
   const outer = document.getElementById('transf-content');
   if(!outer) return;
@@ -5499,13 +5681,14 @@ function _transfTableHTML(rows, date, type){
   }
   let html = '<table class="transf-table"><thead><tr>'
     + '<th>SKU</th><th>Produto</th><th>Qtd</th><th>Origem</th>'
-    + '<th>Destino Físico</th><th>NF Transferência</th><th>✓</th><th></th>'
+    + '<th>Destino Físico</th><th>NF Transferência</th><th>✓</th><th title="Reportar problema" style="color:#dc2626">⚠</th><th></th>'
     + '</tr></thead><tbody>';
   rows.forEach(r=>{
     const checked = _getCheck(date, r.tcId, r.prodIdx, type) ? ' checked' : '';
     const nf = r.destNota && r.destNota !== 'nao_possui' ? r.destNota : '<span style="color:#d1d5db">—</span>';
     const sku = r.sku || '<span style="color:#d1d5db">—</span>';
-    const rowStyle = _getCheck(date, r.tcId, r.prodIdx, type) ? ' style="opacity:.55"' : '';
+    const _rpt=_getReport(date,r.tcId,r.prodIdx,type);
+    const rowStyle = _rpt ? ' style="background:#fff7ed"' : (_getCheck(date, r.tcId, r.prodIdx, type) ? ' style="opacity:.55"' : '');
     const nomeCell = r._delivLabel
       ? `${r.nome||r.sku||'—'}<br><span style="font-size:10px;color:#9ca3af">${r._delivLabel}</span>`
       : (r.nome||r.sku||'—');
@@ -5514,6 +5697,10 @@ function _transfTableHTML(rows, date, type){
       `<button onclick="showTransfRowMenu('${date}','${r.tcId}',${r.prodIdx},'${type}',this)"
         style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:16px;padding:0 4px;border-radius:4px;line-height:1"
         title="Opções">⋯</button>`;
+    const rptBtn = `<button onclick="openTransfReport('${date}','${r.tcId}',${r.prodIdx},'${type}',this)"
+        style="border:none;background:${_rpt?'#fee2e2':'none'};color:${_rpt?'#dc2626':'#d1d5db'};cursor:pointer;font-size:13px;padding:2px 5px;border-radius:5px;line-height:1;font-weight:${_rpt?'700':'400'}"
+        title="${_rpt?'Reportado: '+_rpt.obs:'Reportar problema'}">⚠</button>`;
+    const rptNote = _rpt ? `<tr style="background:#fff7ed"><td colspan="9" style="padding:4px 8px 6px 24px;font-size:11px;color:#dc2626"><strong>⚠ Reportado (${_rpt.tab||''}${_rpt.at?' · '+_rpt.at:''}):</strong> ${esc(_rpt.obs)}</td></tr>` : '';
     html += `<tr${rowStyle}>
       <td style="font-family:monospace;font-size:12px">${sku}</td>
       <td style="font-weight:500">${nomeCell}</td>
@@ -5523,8 +5710,9 @@ function _transfTableHTML(rows, date, type){
       <td>${nf}</td>
       <td style="text-align:center"><input type="checkbox" class="transf-check"${checked}
         onchange="toggleTransfCheck('${date}','${r.tcId}',${r.prodIdx},'${type}',this)"></td>
+      <td style="text-align:center;white-space:nowrap">${rptBtn}</td>
       <td style="text-align:center">${menuBtn}</td>
-    </tr>`;
+    </tr>${rptNote}`;
   });
   html += '</tbody></table>';
   return html;
@@ -6179,8 +6367,24 @@ function _renderTransfResumo(el){
     });
   });
 
+  // Aplicar overrides/removals do Resumo
+  const _resumoOvrs=_resumoOverrides(date);
+  const _removedKeys=new Set(_resumoOvrs.removed||[]);
+  // Apply overrides de quantidade
+  allRows.forEach(r=>{
+    const k=r.tcId+'__'+r.prodIdx;
+    if(_resumoOvrs.overrides&&_resumoOvrs.overrides[k]!=null){
+      const ov=_resumoOvrs.overrides[k];
+      if(ov.qtd!=null)r.qtd=ov.qtd;
+    }
+  });
+  // Exclude removed rows
+  const allRowsFiltered=allRows.filter(r=>!_removedKeys.has(r.tcId+'__'+r.prodIdx));
+  // Append added rows
+  const _addedRows=(_resumoOvrs.added||[]).map((r,i)=>({...r,tcId:'__added__',prodIdx:i,_resumoAdded:true}));
+  const allRowsWithAdded=[...allRowsFiltered,..._addedRows];
   // Exclude rows where NF = "nao_possui" OR origem === destNota (ex: Filial→Filial)
-  const filteredRowsRaw = allRows.filter(r=>
+  const filteredRowsRaw = allRowsWithAdded.filter(r=>
     r.destNota && r.destNota !== 'nao_possui' && r.destNota !== r.origem
   );
   // Expand kits into components for the Resumo view
@@ -6201,11 +6405,27 @@ function _renderTransfResumo(el){
     {orig:'Filial',nota:'CD',     label:'Filial → CD'},
   ];
 
+  // Alertas de abas com reportes/alterações
+  const _tabAlerts=(ST.transfChecks[date]||{})['__tabAlerts__']||[];
+  const _alertBanner=_tabAlerts.length
+    ?`<div style="background:#fff7ed;border:1.5px solid #fbbf24;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:1.2rem">⚠️</span>
+        <div>
+          <div style="font-weight:700;color:#b45309;font-size:13px">Alterações/problemas reportados nas abas: ${_tabAlerts.join(', ')}</div>
+          <div style="font-size:11px;color:#92400e;margin-top:2px">Verifique os itens marcados em vermelho antes de emitir a nota.</div>
+        </div>
+        <button onclick="if(confirm('Limpar todos os alertas de abas?')){delete (ST.transfChecks['${date}']||{})['__tabAlerts__'];save();_renderTransfContent();}" style="margin-left:auto;background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;flex-shrink:0">×</button>
+      </div>`
+    :'';
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <h3 style="margin:0;font-size:16px;color:#5b21b6">📊 Resumo do Dia</h3>
-    <button onclick="downloadTransfResumoExcel('${date}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">📥 Baixar Excel</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="addResumoRow('${date}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">➕ Adicionar item</button>
+      <button onclick="downloadTransfResumoExcel('${date}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">📥 Baixar Excel</button>
+    </div>
   </div>`;
-  html += `<div style="color:#a78bfa;font-size:12px;margin-bottom:16px">${_fmt_date(date)}</div>`;
+  html += `<div style="color:#a78bfa;font-size:12px;margin-bottom:8px">${_fmt_date(date)}</div>`;
+  html += _alertBanner;
 
   let anyGroup = false;
 
@@ -6249,16 +6469,18 @@ function _renderTransfResumo(el){
           <th>Origem</th><th>Destino Físico</th><th>NF</th>
           ${showCmc?'<th style="text-align:right;color:#b45309">CMC (R$)</th>':''}
           ${showCmc?'<th style="text-align:right;color:#7c3aed">CMC Final (R$)</th>':''}
+          <th></th>
         </tr></thead>
         <tbody>`;
 
     rows.forEach(r=>{
-      const sepDone = _getCheck(date,r.tcId,r.prodIdx,'sep');
-      const recDone = _isRecConfirmed(date,r);
-      const origemBg = sepDone ? '#dcfce7' : '#f3f4f6';
-      const origemColor = sepDone ? '#15803d' : '#4b5563';
-      const destBg = recDone ? '#dcfce7' : '#f3f4f6';
-      const destColor = recDone ? '#15803d' : '#4b5563';
+      const _rpt2=r._resumoAdded?null:_getReport(date,r.tcId,r.prodIdx,'sep')||_getReport(date,r.tcId,r.prodIdx,'rec');
+      const sepDone = r._resumoAdded?false:_getCheck(date,r.tcId,r.prodIdx,'sep');
+      const recDone = r._resumoAdded?false:_isRecConfirmed(date,r);
+      const origemBg = _rpt2?'#fee2e2':(sepDone ? '#dcfce7' : '#f3f4f6');
+      const origemColor = _rpt2?'#dc2626':(sepDone ? '#15803d' : '#4b5563');
+      const destBg = _rpt2?'#fee2e2':(recDone ? '#dcfce7' : '#f3f4f6');
+      const destColor = _rpt2?'#dc2626':(recDone ? '#15803d' : '#4b5563');
       const nf = r.destNota && r.destNota!=='nao_possui' ? r.destNota : '—';
       const kitTag = r._kitLabel ? `<br><span style="font-size:10px;color:#7c3aed;font-style:italic">↳ ${r._kitLabel}</span>` : '';
       const label = r._delivLabel ? `<br><span style="font-size:10px;color:#9ca3af">${r._delivLabel}</span>` : '';
@@ -6266,7 +6488,14 @@ function _renderTransfResumo(el){
       const cmcVal=cmcMap[skuLc];
       const icmsPct=icmsMap[skuLc]??null;
       const cmcFinal=cmcVal!=null?cmcVal*(1+(icmsPct||0)):null;
-      html += `<tr>
+      const rowBg=_rpt2?'background:#fff5f5':r._resumoAdded?'background:#f5f3ff':'';
+      // Edit/delete buttons (not for kit sub-rows)
+      const editDel=(!r._kitLabel&&!r._resumoAdded)?`<td style="text-align:center;white-space:nowrap">
+          <button onclick="openResumoRowEdit('${date}','${r.tcId}',${r.prodIdx},this)" style="border:none;background:none;color:#7c3aed;cursor:pointer;font-size:13px;padding:1px 4px;border-radius:4px" title="Editar">✏️</button>
+          <button onclick="deleteResumoRow('${date}','${r.tcId}',${r.prodIdx})" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:13px;padding:1px 4px;border-radius:4px" title="Remover">🗑</button>
+        </td>`:r._resumoAdded?`<td style="text-align:center"><button onclick="(function(){const ovrs=_resumoOverrides('${date}');ovrs.added=(ovrs.added||[]).filter((_,ii)=>ii!==${r.prodIdx});_saveResumoOverrides('${date}',ovrs);_renderTransfContent();})()" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:13px;padding:1px 4px" title="Remover">🗑</button></td>`:'<td></td>';
+      const rptNote2=_rpt2?`<tr style="background:#fff5f5"><td colspan="${showCmc?9:7}" style="padding:3px 8px 5px 16px;font-size:11px;color:#dc2626"><strong>⚠ ${_rpt2.tab||'Reporte'}:</strong> ${esc(_rpt2.obs)}</td></tr>`:'';
+      html += `<tr style="${rowBg}">
         <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
         <td style="font-weight:500;font-size:13px">${r.nome||r.sku||'—'}${kitTag}${label}</td>
         <td style="text-align:center;font-weight:700">${r.qtd}</td>
@@ -6275,7 +6504,8 @@ function _renderTransfResumo(el){
         <td style="font-size:12px;color:#374151">${nf}</td>
         ${showCmc?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${cmcVal!=null?'R$ '+cmcVal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'}</td>`:''}
         ${showCmc?(()=>{if(!showCmc)return '';const pctTag=icmsPct?`<br><span style="font-size:10px;color:#9333ea;font-weight:400">+${(icmsPct*100).toFixed(2)}%</span>`:'';return `<td style="text-align:right;font-size:12px;color:#7c3aed;font-weight:600">${cmcFinal!=null?'R$ '+cmcFinal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})+pctTag:'—'}</td>`;})():''}
-      </tr>`;
+        ${editDel}
+      </tr>${rptNote2}`;
     });
 
     html += `</tbody></table></div>`;
