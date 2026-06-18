@@ -6884,6 +6884,31 @@ function _changelogHTML(ovr){
     ${rows}
   </div>`;
 }
+function _buildResumoRows(date){
+  const allRows = [];
+  const _LOCS = ['CD','Matriz','Filial'];
+  _LOCS.forEach(loc=>{
+    _getSectionRows(date, loc, 'sep', {mirrors:false}).forEach(r=>{
+      if(!r._mirrorFrom) allRows.push(r);
+    });
+  });
+  const _resumoOvrs=_resumoOverrides(date);
+  const _removedKeys=new Set(_resumoOvrs.removed||[]);
+  allRows.forEach(r=>{
+    const k=r.tcId+'__'+r.prodIdx;
+    if(_resumoOvrs.overrides&&_resumoOvrs.overrides[k]!=null){
+      const ov=_resumoOvrs.overrides[k];
+      if(ov.qtd!=null)r.qtd=ov.qtd;
+    }
+  });
+  const allRowsFiltered=allRows.filter(r=>!_removedKeys.has(r.tcId+'__'+r.prodIdx));
+  const _addedRows=(_resumoOvrs.added||[]).map((r,i)=>({...r,tcId:'__added__',prodIdx:i,_resumoAdded:true}));
+  const allRowsWithAdded=[...allRowsFiltered,..._addedRows];
+  const filteredRowsRaw=allRowsWithAdded.filter(r=>
+    r.destNota && r.destNota!=='nao_possui' && r.destNota!==r.origem
+  );
+  return expandKitsParaResumo(filteredRowsRaw);
+}
 function _renderTransfResumo(el){
   const date = _transfDate;
   const tcs = _tcsByDate(date);
