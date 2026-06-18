@@ -1927,14 +1927,21 @@ function togRestHorario(){
   if(bs)bs.style.borderColor=v==='sim'?'#fca5a5':'#d1d5db';
 }
 function moveStop(per,i,dir){
-  const plan=curPlan();if(!plan)return;
-  const stops=plan[per].stops;
+  const plan=curPlan();
+  if(!plan){toast('sem plano','err');return;}
+  const perData=plan[per];
+  if(!perData||!perData.stops){toast('sem stops em '+per,'err');return;}
+  const stops=perData.stops;
   const j=i+dir;
-  if(j<1||j>=stops.length||stops[j]?.type==='start'||stops[j]?.type==='return')return;
+  const sj=stops[j];
+  if(j<1){toast('início da lista','err');return;}
+  if(j>=stops.length){toast('fim da lista','err');return;}
+  if(sj?.type==='start'||sj?.type==='return'){toast('não pode passar de início/fim','err');return;}
   [stops[i],stops[j]]=[stops[j],stops[i]];
   plan[per].legDurs=[];plan[per].legDists=[];plan[per].totalDist=0;plan[per].totalDur=0;
   addRouteHistorico('Reordenação manual',editingBy||'Sistema');
   save();reRenderPanels();
+  toast(dir<0?'Movido para cima ▲':'Movido para baixo ▼','ok');
   showL('Recalculando...');recalcPer(per).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
 }
 function ulDrop(e,per){
