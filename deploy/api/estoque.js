@@ -1,16 +1,16 @@
 /**
- * Vercel Serverless Function — saldo físico do CD no Omie
- * ObterEstoqueProduto → listaEstoque[nIdlocal=CD].fisico
+ * Vercel Serverless Function — saldo físico no Omie
+ * Chamadas SEQUENCIAIS com delay para evitar rate limit do Omie
  */
 
 export const maxDuration = 60;
 
-const APP_KEY    = '5490393509601';
+const APP_KEY  = '5490393509601';
 const APP_SECRET = '63b1bb40caba6f37c7814735bf637acd';
-const URL_EST    = 'https://app.omie.com.br/api/v1/estoque/resumo/';
-const ID_LOCAL   = 11264312395; // Local de Estoque Padrão (CD)
+const URL_EST  = 'https://app.omie.com.br/api/v1/estoque/resumo/';
 
 const hoje = () => new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function getSaldo(sku) {
   try {
@@ -26,13 +26,10 @@ async function getSaldo(sku) {
     });
     const data = await r.json();
     if (data.faultstring) return null;
-
     const lista = data.listaEstoque || [];
     if (!lista.length) return 0;
-
-    // Soma todos os locais — mesmo resultado que "Estoque Físico" no Omie
-    const total = lista.reduce((sum, e) => sum + (parseFloat(e.fisico ?? e.nSaldo ?? 0) || 0), 0);
-    return total;
+    // Soma todos os locais — igual ao "Estoque Físico" no Omie
+    return lista.reduce((sum, e) => sum + (parseFloat(e.fisico ?? e.nSaldo ?? 0) || 0), 0);
   } catch (e) {
     console.error(`[estoque] ${sku}: ${e.message}`);
     return null;
@@ -50,11 +47,9 @@ export default async function handler(req, res) {
   if (!skus || !skus.length) return res.status(400).json({ erro: 'skus é obrigatório' });
 
   const results = {};
-  const BATCH = 8;
-  for (let i = 0; i < skus.length; i += BATCH) {
-    await Promise.all(skus.slice(i, i + BATCH).map(async (sku) => {
-      results[sku.toUpperCase()] = await getSaldo(sku);
-    }));
+  for (const sku of skus) {
+    results[sku.toUpperCase()] = await getSaldo(sku);
+    await sleep(300); // 300ms entre cada chamada — igual ao script Python
   }
 
   return res.status(200).json(results);
