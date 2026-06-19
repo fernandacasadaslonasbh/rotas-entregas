@@ -7494,21 +7494,18 @@ async function gerarRemessaOmie(date, orig, nota){
   }
 
   // Agrega por SKU — usa CMC Omie da loja de origem como valor unitário
-  const prodIds = getProdutoIds();
+  // (nCodProd é resolvido pelo remessa.js no servidor via ConsultarProduto)
   const cmcLojaOrig = (window._cmcLojaData && window._cmcLojaData[orig]) || {};
   const agregado = {};
-  const semId = [];
   const semCmc = [];
 
   rows.forEach(r=>{
     const skuLc = (r.sku||'').toLowerCase();
     const skuUp = skuLc.toUpperCase();
-    const codProd = prodIds[skuLc];
-    if(!codProd){ if(!semId.includes(r.sku)) semId.push(r.sku); return; }
     const cmcVal = cmcLojaOrig[skuUp] ?? null;
     if(cmcVal == null){ if(!semCmc.includes(r.sku)) semCmc.push(r.sku); return; }
     if(!agregado[skuLc]){
-      agregado[skuLc] = { codigo_produto: codProd, sku: r.sku, qtd: 0, valor_unitario: cmcVal };
+      agregado[skuLc] = { sku: r.sku, qtd: 0, valor_unitario: cmcVal };
     }
     agregado[skuLc].qtd += Number(r.qtd)||0;
   });
@@ -7516,11 +7513,10 @@ async function gerarRemessaOmie(date, orig, nota){
   const itens = Object.values(agregado).filter(i=> i.qtd > 0);
 
   let aviso = '';
-  if(semId.length) aviso += `\n⚠ SKUs sem ID interno (não incluídos): ${semId.join(', ')}`;
   if(semCmc.length) aviso += `\n⚠ SKUs sem CMC Omie — consulte o Estoque ${orig} primeiro: ${semCmc.join(', ')}`;
 
   if(!itens.length){
-    alert('Nenhum item pode ser incluído na remessa.' + aviso + (semCmc.length ? '\n\nClique em "🏢 Estoque Matriz" ou "🏪 Estoque Filial" para carregar o CMC.' : ''));
+    alert('Nenhum item pode ser incluído na remessa.' + aviso + '\n\nClique em "🏢 Estoque Matriz" ou "🏪 Estoque Filial" para carregar o CMC.');
     return;
   }
 
@@ -7539,7 +7535,7 @@ async function gerarRemessaOmie(date, orig, nota){
       body: JSON.stringify({
         orig,
         data_previsao: hoje,
-        itens: itens.map(i=>({ codigo_produto: i.codigo_produto, quantidade: i.qtd, valor_unitario: i.valor_unitario }))
+        itens: itens.map(i=>({ sku: i.sku, quantidade: i.qtd, valor_unitario: i.valor_unitario }))
       })
     });
     const data = await resp.json();
@@ -7770,4 +7766,6 @@ function addTcToRoute(tcId, routeType, per){
           <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📦 Adicionar produto</div>
           <div style="display:grid;grid-template-columns:1fr 60px 100px 120px 120px auto;gap:6px;align-items:end">
             <div style="position:relative">
-              <label sty
+              <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Produto</label>
+              <input type="text" id="tcProdSku" placeholder="🔍 SKU ou nome do produto..."
+                style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;b
