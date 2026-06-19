@@ -30,33 +30,47 @@ async function firebase(path, data) {
 
 async function listarProdutos() {
   const catalogo = {}, idParaSku = {}, skuParaId = {}, kits = [];
-  let pagina = 1, totalPaginas = 1;
-  while (pagina <= totalPaginas) {
-    const data = await omie('ListarProdutos', [{
-      pagina, registros_por_pagina: 100,
-      apenas_importado_api: 'N', filtrar_apenas_omiepdv: 'N', inativo: 'N'
-    }]);
-    if (data.faultstring) break;
-    totalPaginas = data.total_de_paginas || 1;
-    for (const p of (data.produto_servico_cadastro || [])) {
-      const sku  = String(p.codigo || '').trim().toLowerCase();
-      const nome = String(p.descricao || '').trim();
-      const id   = p.codigo_produto;
-      const tipo = String(p.tipoItem || '').trim();
-      if (sku && nome) {
-        catalogo[sku] = nome;
-        if (id) { idParaSku[id] = sku; skuParaId[sku] = id; }
-        if (tipo === 'KT') kits.push(sku);
+
+  // Busca página 1 para saber o total de páginas
+  const first = await omie('ListarProdutos', [{
+    pagina: 1, registros_por_pagina: 100,
+    apenas_importado_api: 'N', filtrar_apenas_omiepdv: 'N', inativo: 'N'
+  }]);
+  if (first.faultstring) return { catalogo, idParaSku, skuParaId, kits };
+  const totalPaginas = first.total_de_paginas || 1;
+
+  // Processa todas as páginas em paralelo (lotes de 5 para não sobrecarregar)
+  const paginas = Array.from({ length: totalPaginas }, (_, i) => i + 1);
+  const BATCH_PAG = 5;
+  for (let i = 0; i < paginas.length; i += BATCH_PAG) {
+    const results = await Promise.all(paginas.slice(i, i + BATCH_PAG).map(p =>
+      p === 1 ? Promise.resolve(first)
+              : omie('ListarProdutos', [{
+                  pagina: p, registros_por_pagina: 100,
+                  apenas_importado_api: 'N', filtrar_apenas_omiepdv: 'N', inativo: 'N'
+                }])
+    ));
+    for (const data of results) {
+      if (data.faultstring) continue;
+      for (const p of (data.produto_servico_cadastro || [])) {
+        const sku  = String(p.codigo || '').trim().toLowerCase();
+        const nome = String(p.descricao || '').trim();
+        const id   = p.codigo_produto;
+        const tipo = String(p.tipoItem || '').trim();
+        if (sku && nome) {
+          catalogo[sku] = nome;
+          if (id) { idParaSku[id] = sku; skuParaId[sku] = id; }
+          if (tipo === 'KT') kits.push(sku);
+        }
       }
     }
-    pagina++;
   }
   return { catalogo, idParaSku, skuParaId, kits };
 }
 
 async function buscarKits(kits, idParaSku, catalogo) {
   const composicoes = {};
-  const BATCH = 10;
+  const BATCH = 25; // aumentado de 10 para 25 para processar mais rápido
   for (let i = 0; i < kits.length; i += BATCH) {
     await Promise.all(kits.slice(i, i + BATCH).map(async (sku) => {
       try {
