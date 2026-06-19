@@ -7543,8 +7543,8 @@ async function gerarRemessaOmie(date, orig, nota){
       })
     });
     const data = await resp.json();
-    if(data.numero_pedido || data.codigo_pedido){
-      toast(`✅ Remessa criada! Nº ${data.numero_pedido}`, 'ok');
+    if(data.nCodRem || data.cNumRemessa){
+      toast(`✅ Remessa criada! Nº ${data.cNumRemessa || data.nCodRem}`, 'ok');
     } else if(data.faultstring){
       alert(`❌ Erro Omie:\n${data.faultstring}`);
     } else if(data.erro){
@@ -7770,4 +7770,4 @@ function addTcToRoute(tcId, routeType, per){
           <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📦 Adicionar produto</div>
           <div style="display:grid;grid-template-columns:1fr 60px 100px 120px 120px auto;gap:6px;align-items:end">
             <div style="position:relative">
-              <label style="fo
+              <label sty
