@@ -7682,7 +7682,7 @@ function addTcToRoute(tcId, routeType, per){
         <!-- Adicionar produto -->
         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px">
           <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📦 Adicionar produto</div>
-          <div style="display:grid;grid-template-columns:1fr 70px;gap:6px;margin-bottom:8px;align-items:end">
+          <div style="display:grid;grid-template-columns:1fr 60px 100px 120px 120px auto;gap:6px;align-items:end">
             <div style="position:relative">
               <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Produto</label>
               <input type="text" id="tcProdSku" placeholder="🔍 SKU ou nome do produto..."
@@ -7696,11 +7696,9 @@ function addTcToRoute(tcId, routeType, per){
               <input type="number" id="tcProdQtd" min="1" value="1"
                 style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box;text-align:center">
             </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
             <div>
               <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Origem</label>
-              <select id="tcProdOrigem" style="width:100%;padding:5px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box">
+              <select id="tcProdOrigem" style="width:100%;padding:6px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box">
                 <option value="CD">CD</option>
                 <option value="Matriz">Matriz</option>
                 <option value="Filial">Filial</option>
@@ -7708,7 +7706,7 @@ function addTcToRoute(tcId, routeType, per){
             </div>
             <div>
               <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Destino Físico</label>
-              <select id="tcProdDestFisico" style="width:100%;padding:5px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box">
+              <select id="tcProdDestFisico" style="width:100%;padding:6px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box">
                 <option value="CD">CD</option>
                 <option value="Matriz">Matriz</option>
                 <option value="Filial">Filial</option>
@@ -7717,16 +7715,18 @@ function addTcToRoute(tcId, routeType, per){
             </div>
             <div>
               <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">NF Transferência</label>
-              <select id="tcProdDestNota" style="width:100%;padding:5px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box">
+              <select id="tcProdDestNota" style="width:100%;padding:6px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box">
                 <option value="nao_possui">Não possui</option>
                 <option value="Matriz">Matriz</option>
                 <option value="Filial" selected>Filial</option>
                 <option value="CD">CD</option>
               </select>
             </div>
+            <div>
+              <button type="button" onclick="addTcProduto()"
+                style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Adicionar</button>
+            </div>
           </div>
-          <button type="button" onclick="addTcProduto()"
-            style="padding:7px 18px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Adicionar produto</button>
         </div>
       </div><!-- fim .fg produtos -->
       <!-- Observação -->
@@ -7748,3 +7748,4 @@ function addTcToRoute(tcId, routeType, per){
   </div><!-- fim .modal -->
 </div><!-- fim #tcOverlay -->
 </body></html>
+                                                      
