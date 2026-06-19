@@ -1902,17 +1902,15 @@ function setTardeBase(baseKey){
   const plan=curPlan();
   if(!plan)return;
   plan.tardeBase=baseKey;
-  // Atualiza o start stop da tarde
   if(plan.tarde&&plan.tarde.stops){
     const st=plan.tarde.stops;
     if(st[0]?.type==='start')st[0].key=baseKey;
     else st.unshift({type:'start',key:baseKey});
-    // Limpar legs para recalcular
-    plan.tarde.legDurs=undefined;plan.tarde.legDists=undefined;plan.tarde.totalDist=0;plan.tarde.totalDur=0;
+    plan.tarde.legDurs=[];plan.tarde.legDists=[];plan.tarde.totalDist=0;plan.tarde.totalDur=0;
   }
-  save();renderRoutePanels();
-  showL('Calculando distâncias...');
-  recalcPer('tarde').then(()=>{save();renderRoutePanels();hideL();}).catch(()=>hideL());
+  save();renderRoutePanels(); // Mudança instantânea — sem overlay bloqueante
+  toast('Base atualizada ✓ Recalculando...','ok');
+  recalcPer('tarde').then(()=>{save();reRenderPanels();}).catch(e=>console.warn('setTardeBase:',e));
 }
 function normalizeStartStop(per){
   if(!curPlan()||!curPlan()[per])return;
@@ -2100,7 +2098,11 @@ async function googleRoute(pts,optimize=false){
 async function osrmRoute(pts){
   if(GOOGLE_MAPS_API_KEY){const r=await googleRoute(pts);if(r)return r;}
   const c=pts.map(p=>p.lng+','+p.lat).join(';');
-  try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${c}?overview=false`);const d=await r.json();if(d.code==='Ok'&&d.routes[0]){const rt=d.routes[0];return{dist:rt.distance,dur:Math.round(rt.duration*FATOR_TRANSITO),legs:(rt.legs||[]).map(l=>Math.round(l.duration*FATOR_TRANSITO)),legDists:(rt.legs||[]).map(l=>Math.round(l.distance))};}}catch(e){}
+  try{
+    const ctrl=new AbortController();const _t=setTimeout(()=>ctrl.abort(),10000);
+    const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${c}?overview=false`,{signal:ctrl.signal});
+    clearTimeout(_t);
+    const d=await r.json();if(d.code==='Ok'&&d.routes[0]){const rt=d.routes[0];return{dist:rt.distance,dur:Math.round(rt.duration*FATOR_TRANSITO),legs:(rt.legs||[]).map(l=>Math.round(l.duration*FATOR_TRANSITO)),legDists:(rt.legs||[]).map(l=>Math.round(l.distance))};}}catch(e){}
   return null;
 }
 async function osrmTrip(pts){
