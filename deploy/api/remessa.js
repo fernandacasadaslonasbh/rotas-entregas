@@ -35,9 +35,12 @@ async function omieCall(url, app_key, app_secret, call, param) {
   return r.json();
 }
 
-// Retorna { nCodProd, cfop } — cfop 5409 se tiver CEST (ST), 5152 se tributado
+// Retorna { nCodProd, cfop }
+// CFOP 5.409 (ST): cst_icms=60 OU cest preenchido
+// CFOP 5.152 (Tributado): demais casos (ex: cst_icms=00)
 async function buscarProduto(sku, cfg) {
   try {
+    // 1. ConsultarProduto → nCodProd
     const data = await omieCall(OMIE_PROD_URL, cfg.app_key, cfg.app_secret, 'ConsultarProduto', {
       codigo: sku,
       codigo_produto: 0,
@@ -45,9 +48,34 @@ async function buscarProduto(sku, cfg) {
     });
     const nCodProd = data.codigo_produto;
     if (!nCodProd) return null;
-    // Se tiver CEST preenchido → ST → 5409; senão → Tributado → 5152
-    const cest = data.cest || data.codigo_cest || data.cCest || '';
-    const cfop = cest && String(cest).trim() !== '' ? '5409' : '5152';
+
+    // 2. ListarProdutos filtrado por codigo_produto → cst_icms e cest
+    let cstIcms = '';
+    let cest    = '';
+    // Tenta filtrar pelo ID interno (mais confiável); fallback por codigo (SKU)
+    for (const filtro of [{ pagina:1, registros_por_pagina:1, codigo_produto: nCodProd },
+                           { pagina:1, registros_por_pagina:1, codigo: sku }]) {
+      const lista = await omieCall(OMIE_PROD_URL, cfg.app_key, cfg.app_secret, 'ListarProdutos', filtro);
+      const prods = lista.produto_servico_cadastro || [];
+      // Verifica que é o produto certo antes de usar os dados fiscais
+      const match = prods.find(p => p.codigo_produto === nCodProd || p.codigo === sku);
+      if (match) {
+        cstIcms = String(match.cst_icms || '').trim();
+        cest    = String(match.cest || '').trim();
+        break;
+      }
+    }
+
+    // Fallback: recomendacoes_fiscais do ConsultarProduto
+    if (!cstIcms && !cest) {
+      const rec = data.recomendacoes_fiscais || {};
+      cstIcms = String(rec.cst_icms || rec.cst || '').trim();
+      cest    = String(rec.cest || rec.codigo_cest || '').trim();
+    }
+
+    const isST = cstIcms === '60' || (cest !== '' && cest !== '0');
+    // Formato com ponto obrigatório no Omie
+    const cfop = isST ? '5.409' : '5.152';
     return { nCodProd, cfop };
   } catch(e) {
     console.error('[remessa] buscarProduto', sku, e.message);
@@ -79,7 +107,7 @@ export default async function handler(req, res) {
     } else {
       produtosResolvidos.push({ ...item, nCodProd: prod.nCodProd, cfop: prod.cfop });
     }
-    await sleep(200);
+    await sleep(100);
   }
 
   if (!produtosResolvidos.length) {
