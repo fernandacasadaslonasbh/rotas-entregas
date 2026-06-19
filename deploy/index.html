@@ -2041,8 +2041,13 @@ function reRenderPanels(){
   const _lunchBase2=Math.max(12*60+30,morningEnd);
   const lunchStart=plan.lunchOverride!=null?plan.lunchOverride:_lunchBase2;
   const lunch=lunchBannerHTML(morningEnd,plan);
+  const tardeBase=plan.tardeBase||'CD';
+  const tbLabels={'CD':'CD Galpão','Matriz':'Loja Matriz','Filial':'Loja Filial'};
+  let tbBtns='';
+  ['CD','Matriz','Filial'].forEach(function(b){tbBtns+='<button class="tarde-base-btn'+(b===tardeBase?' active':'')+'" data-base="'+b+'" onclick="setTardeBase(this.dataset.base)">'+tbLabels[b]+'</button>';});
+  const tardeBaseExtra='<div class="tarde-base-sel" style="margin-top:4px">'+tbBtns+'</div>';
   if(pm)pm.innerHTML=panelHTML('manha',plan.manha,'Manhã — 08h30',mStart);
-  if(pt)pt.innerHTML=panelHTML('tarde',plan.tarde,'Tarde',lunchStart+60,lunch);
+  if(pt)pt.innerHTML=panelHTML('tarde',plan.tarde,'Tarde',lunchStart+60,lunch,tardeBaseExtra);
   initDrag();
 }
 
