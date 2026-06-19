@@ -119,10 +119,10 @@ export default async function handler(req, res) {
         nValOutras: 0,
       },
       infAdic: {
-        cCodCateg:  '1.01.03',
+        cCodCateg:  '1.02.99',
         cConsFinal: 'N',
         cContato:   '',
-        cDadosAdic: '',
+        cDadosAdic: 'ICMS ST RECOLHIDO ANTERIORMENTE POR SUB.TRIB.CONF. ANEXO VII, PARTE II DO DECRET. 48.589 DE 22/03/2023 DO RICMS MG.\n-- --\nTransferência de mercadoria equiparada a uma operação tributada, nos termos do § 5o do art. 12 da Lei Complementar no 87/96 e da cláusula sexta do Convênio ICMS no 109/24.',
         cNumCtr:    '',
         cPedido:    '',
         nCodProj:   0,
