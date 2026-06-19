@@ -7145,6 +7145,7 @@ function _renderTransfResumo(el){
             <span style="font-size:12px;font-weight:700;color:${transfDone?'#15803d':'#6b7280'}">Transferência realizada</span>
           </label>
           ${showCmc?`<button onclick="gerarNFOmieRoute('${date}','${route.orig}','${route.nota}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px" title="Criar Pedido de Venda na Omie">📋 Gerar NF na Omie</button>`:''}
+          ${showEstoqueLoja?`<button onclick="gerarRemessaOmie('${date}','${route.orig}','${route.nota}')" style="background:#0369a1;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px" title="Criar Remessa na Omie">📦 Gerar Remessa na Omie</button>`:''}
         </div>
       </div>
       <table class="transf-table" style="margin-top:0">
@@ -7471,6 +7472,91 @@ async function gerarNFOmieRoute(date, orig, nota){
   }
 }
 
+// ── Gerar Remessa na Omie (Matriz↔Filial) ─────────────────────────────────────
+async function gerarRemessaOmie(date, orig, nota){
+  if(orig !== 'Matriz' && orig !== 'Filial'){
+    alert('Geração de remessa disponível apenas para rotas Matriz↔Filial.');
+    return;
+  }
+
+  // Coleta rows desta rota
+  const allRows = [];
+  ['CD','Matriz','Filial'].forEach(loc=>{
+    _getSectionRows(date, loc, 'sep', {mirrors:false}).forEach(r=>{ if(!r._mirrorFrom) allRows.push(r); });
+  });
+  const filteredRaw = allRows.filter(r=> r.destNota && r.destNota !== 'nao_possui' && r.destNota !== r.origem);
+  const filteredRows = expandKitsParaResumo(filteredRaw);
+  const rows = filteredRows.filter(r=> r.origem === orig && r.destNota === nota);
+
+  if(!rows.length){
+    alert('Nenhum item encontrado para ' + orig + ' → ' + nota);
+    return;
+  }
+
+  // Agrega por SKU — usa CMC Omie da loja de origem como valor unitário
+  const prodIds = getProdutoIds();
+  const cmcLojaOrig = (window._cmcLojaData && window._cmcLojaData[orig]) || {};
+  const agregado = {};
+  const semId = [];
+  const semCmc = [];
+
+  rows.forEach(r=>{
+    const skuLc = (r.sku||'').toLowerCase();
+    const skuUp = skuLc.toUpperCase();
+    const codProd = prodIds[skuLc];
+    if(!codProd){ if(!semId.includes(r.sku)) semId.push(r.sku); return; }
+    const cmcVal = cmcLojaOrig[skuUp] ?? null;
+    if(cmcVal == null){ if(!semCmc.includes(r.sku)) semCmc.push(r.sku); return; }
+    if(!agregado[skuLc]){
+      agregado[skuLc] = { codigo_produto: codProd, sku: r.sku, qtd: 0, valor_unitario: cmcVal };
+    }
+    agregado[skuLc].qtd += Number(r.qtd)||0;
+  });
+
+  const itens = Object.values(agregado).filter(i=> i.qtd > 0);
+
+  let aviso = '';
+  if(semId.length) aviso += `\n⚠ SKUs sem ID interno (não incluídos): ${semId.join(', ')}`;
+  if(semCmc.length) aviso += `\n⚠ SKUs sem CMC Omie — consulte o Estoque ${orig} primeiro: ${semCmc.join(', ')}`;
+
+  if(!itens.length){
+    alert('Nenhum item pode ser incluído na remessa.' + aviso + (semCmc.length ? '\n\nClique em "🏢 Estoque Matriz" ou "🏪 Estoque Filial" para carregar o CMC.' : ''));
+    return;
+  }
+
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const resumo = itens.map(i=>`• ${i.sku} × ${i.qtd} @ R$ ${i.valor_unitario.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})}`).join('\n');
+  const origLabel = orig === 'Matriz' ? 'CASA DAS LONAS - MATRIZ' : 'CASA DAS LONAS - FILIAL';
+  const destLabel = nota === 'Matriz' ? 'CASA DAS LONAS - MATRIZ' : 'CASA DAS LONAS - FILIAL';
+  const confirmMsg = `Criar Remessa na Omie:\n\nRota: ${orig} → ${nota}\nOrigem: ${origLabel}\nDestino: ${destLabel}\nItens (${itens.length}):\n${resumo}${aviso}\n\nConfirmar?`;
+
+  if(!confirm(confirmMsg)) return;
+
+  try {
+    const resp = await fetch('/api/remessa', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        orig,
+        data_previsao: hoje,
+        itens: itens.map(i=>({ codigo_produto: i.codigo_produto, quantidade: i.qtd, valor_unitario: i.valor_unitario }))
+      })
+    });
+    const data = await resp.json();
+    if(data.numero_pedido || data.codigo_pedido){
+      toast(`✅ Remessa criada! Nº ${data.numero_pedido}`, 'ok');
+    } else if(data.faultstring){
+      alert(`❌ Erro Omie:\n${data.faultstring}`);
+    } else if(data.erro){
+      alert(`❌ Erro:\n${data.erro}`);
+    } else {
+      alert(`Resposta inesperada:\n${JSON.stringify(data).substring(0,300)}`);
+    }
+  } catch(e){
+    alert('❌ Erro ao conectar: ' + e.message);
+  }
+}
+
 // Check if receipt is confirmed for a row
 function _isRecConfirmed(date, r){
   // Delivery-sourced: check if the delivery card is "entregue"
@@ -7684,68 +7770,4 @@ function addTcToRoute(tcId, routeType, per){
           <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📦 Adicionar produto</div>
           <div style="display:grid;grid-template-columns:1fr 60px 100px 120px 120px auto;gap:6px;align-items:end">
             <div style="position:relative">
-              <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Produto</label>
-              <input type="text" id="tcProdSku" placeholder="🔍 SKU ou nome do produto..."
-                style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box"
-                oninput="searchProdutoTc()" onblur="hideProdutoDropdownTc()" autocomplete="off">
-              <input type="hidden" id="tcProdSkuReal">
-              <input type="hidden" id="tcProdNome">
-            </div>
-            <div>
-              <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
-              <input type="number" id="tcProdQtd" min="1" value="1"
-                style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box;text-align:center">
-            </div>
-            <div>
-              <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Origem</label>
-              <select id="tcProdOrigem" style="width:100%;padding:6px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box">
-                <option value="CD">CD</option>
-                <option value="Matriz">Matriz</option>
-                <option value="Filial">Filial</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Destino Físico</label>
-              <select id="tcProdDestFisico" style="width:100%;padding:6px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box">
-                <option value="CD">CD</option>
-                <option value="Matriz">Matriz</option>
-                <option value="Filial">Filial</option>
-                <option value="Cliente">Cliente</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">NF Transferência</label>
-              <select id="tcProdDestNota" style="width:100%;padding:6px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box">
-                <option value="nao_possui">Não possui</option>
-                <option value="Matriz">Matriz</option>
-                <option value="Filial" selected>Filial</option>
-                <option value="CD">CD</option>
-              </select>
-            </div>
-            <div>
-              <button type="button" onclick="addTcProduto()"
-                style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Adicionar</button>
-            </div>
-          </div>
-        </div>
-      </div><!-- fim .fg produtos -->
-      <!-- Observação -->
-      <div class="fg">
-        <label>📝 Observação <span style="color:#9ca3af;font-size:0.72rem">(opcional)</span></label>
-        <textarea id="tcObs" rows="2" placeholder="Obs sobre esta transferência/coleta..." style="resize:vertical"></textarea>
-      </div>
-      <!-- Autor -->
-      <div class="fg">
-        <label>👤 Seu nome <span style="color:#ef4444;font-size:0.72rem">*obrigatório</span></label>
-        <input type="text" id="tcAutor" placeholder="Nome de quem está registrando...">
-      </div>
-    </div><!-- fim .mbody -->
-    <div class="mfooter">
-      <button id="tcBtnDel" onclick="deleteTcCard()" style="display:none;background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;margin-right:auto">🗑 Excluir</button>
-      <button onclick="closeTcForm()" class="btn btn-outline btn-sm">Cancelar</button>
-      <button onclick="saveTcCard()" class="btn btn-primary btn-sm">💾 Salvar</button>
-    </div>
-  </div><!-- fim .modal -->
-</div><!-- fim #tcOverlay -->
-</body></html>
-                                                      
+              <label style="fo
