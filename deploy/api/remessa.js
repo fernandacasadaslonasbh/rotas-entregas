@@ -98,6 +98,7 @@ export default async function handler(req, res) {
     nCodProd:  item.nCodProd,
     nQtde:     item.quantidade,
     nValUnit:  item.valor_unitario,
+    cCFOP:     '5.405',
   }));
 
   const omiePayload = {
