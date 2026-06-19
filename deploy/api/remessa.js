@@ -11,14 +11,16 @@ const OMIE_REM_URL  = 'https://app.omie.com.br/api/v1/produtos/remessa/';
 
 const CONFIG = {
   Matriz: {
-    app_key:    '3554224779105',
-    app_secret: '6466fbd2b0bbfebc37b597face75280c',
-    nCodCli:    10136107449,  // CASA DAS LONAS LTDA - FILIAL no sistema Matriz
+    app_key:                  '3554224779105',
+    app_secret:               '6466fbd2b0bbfebc37b597face75280c',
+    nCodCli:                  10136107449,  // CASA DAS LONAS LTDA - FILIAL no sistema Matriz
+    codigo_cenario_impostos:  10148831396,  // Nota de Transferência (Matriz/Viamão)
   },
   Filial: {
-    app_key:    '3557069109594',
-    app_secret: '59d446121fb05b3c3e72d76f180e8e93',
-    nCodCli:    10138027795,  // CASA DAS LONAS LTDA - MATRIZ no sistema Filial
+    app_key:                  '3557069109594',
+    app_secret:               '59d446121fb05b3c3e72d76f180e8e93',
+    nCodCli:                  10138027795,  // CASA DAS LONAS LTDA - MATRIZ no sistema Filial
+    codigo_cenario_impostos:  10144606902,  // Nota de Transferência (Filial/Pedro II)
   }
 };
 
@@ -33,25 +35,22 @@ async function omieCall(url, app_key, app_secret, call, param) {
   return r.json();
 }
 
-async function buscarNCodProd(sku, cfg) {
+// Retorna { nCodProd, cfop } — cfop 5409 se tiver CEST (ST), 5152 se tributado
+async function buscarProduto(sku, cfg) {
   try {
     const data = await omieCall(OMIE_PROD_URL, cfg.app_key, cfg.app_secret, 'ConsultarProduto', {
       codigo: sku,
       codigo_produto: 0,
       codigo_produto_integracao: ''
     });
-    const cod = data.codigo_produto;
-    if (cod) return cod;
-    // Fallback: ListarProdutos filtrado pelo código
-    const lista = await omieCall(OMIE_PROD_URL, cfg.app_key, cfg.app_secret, 'ListarProdutos', {
-      pagina: 1, registros_por_pagina: 5,
-      filtrar_apenas_omiepdv: 'N',
-      produto_servico_cadastro: [{ codigo: sku }]
-    });
-    const prods = lista.produto_servico_cadastro || [];
-    return prods[0]?.codigo_produto ?? null;
+    const nCodProd = data.codigo_produto;
+    if (!nCodProd) return null;
+    // Se tiver CEST preenchido → ST → 5409; senão → Tributado → 5152
+    const cest = data.cest || data.codigo_cest || data.cCest || '';
+    const cfop = cest && String(cest).trim() !== '' ? '5409' : '5152';
+    return { nCodProd, cfop };
   } catch(e) {
-    console.error('[remessa] buscarNCodProd', sku, e.message);
+    console.error('[remessa] buscarProduto', sku, e.message);
     return null;
   }
 }
@@ -70,15 +69,15 @@ export default async function handler(req, res) {
 
   const cfg = CONFIG[orig];
 
-  // Buscar nCodProd de cada SKU no sistema de origem
+  // Buscar nCodProd e CFOP de cada SKU no sistema de origem
   const semCodigo = [];
   const produtosResolvidos = [];
   for (const item of itens) {
-    const nCodProd = await buscarNCodProd(item.sku, cfg);
-    if (!nCodProd) {
+    const prod = await buscarProduto(item.sku, cfg);
+    if (!prod) {
       semCodigo.push(item.sku);
     } else {
-      produtosResolvidos.push({ ...item, nCodProd });
+      produtosResolvidos.push({ ...item, nCodProd: prod.nCodProd, cfop: prod.cfop });
     }
     await sleep(200);
   }
@@ -98,7 +97,7 @@ export default async function handler(req, res) {
     nCodProd:  item.nCodProd,
     nQtde:     item.quantidade,
     nValUnit:  item.valor_unitario,
-    cCFOP:     '5.405',
+    cCFOP:     item.cfop,  // 5409 se ST (tem CEST), 5152 se Tributado
   }));
 
   const omiePayload = {
@@ -108,10 +107,11 @@ export default async function handler(req, res) {
     param: [{
       cabec: {
         cCodIntRem,
-        dPrevisao:  data_previsao,
-        nCodCli:    cfg.nCodCli,
-        nCodRem:    0,
-        nCodVend:   ''
+        dPrevisao:               data_previsao,
+        nCodCli:                 cfg.nCodCli,
+        nCodRem:                 0,
+        nCodVend:                '',
+        codigo_cenario_impostos: cfg.codigo_cenario_impostos,
       },
       frete: {
         cTpFrete:   '9',
