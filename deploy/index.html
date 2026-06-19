@@ -5852,6 +5852,36 @@ function consultarEstoqueCD(date){
     .catch(e=>{toast('Erro ao consultar estoque','err');console.error(e);})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent='🏭 Estoque CD';}});
 }
+function consultarEstoqueLoja(loja,date){
+  const btnId='btn-estoque-'+loja.toLowerCase()+'-'+date;
+  const btn=document.getElementById(btnId);
+  const icon=loja==='Matriz'?'🏢':'🏪';
+  if(btn){btn.disabled=true;btn.textContent='⏳ Consultando...';}
+  const allRows=_buildResumoRows(date);
+  const skus=[...new Set(allRows.filter(r=>r.origem===loja).map(r=>(r.sku||'').toUpperCase()).filter(Boolean))];
+  if(!skus.length){toast('Nenhum SKU de '+loja+' encontrado','err');if(btn){btn.disabled=false;btn.textContent=icon+' Estoque '+loja;}return;}
+  fetch('/api/estoque_loja',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loja,skus})})
+    .then(r=>r.json())
+    .then(data=>{
+      if(data.erro){toast('Erro Omie: '+data.erro,'err');return;}
+      if(!window._estoqueLojaData) window._estoqueLojaData={};
+      if(!window._cmcLojaData) window._cmcLojaData={};
+      window._estoqueLojaData[loja]={};
+      window._cmcLojaData[loja]={};
+      Object.entries(data).forEach(([sku,val])=>{
+        if(val&&typeof val==='object'){
+          window._estoqueLojaData[loja][sku.toUpperCase()]=val.fisico??null;
+          if(val.cmc!=null) window._cmcLojaData[loja][sku.toUpperCase()]=val.cmc;
+        } else {
+          window._estoqueLojaData[loja][sku.toUpperCase()]=val;
+        }
+      });
+      _renderTransfContent();
+      toast('Estoque '+loja+' atualizado ✓','ok');
+    })
+    .catch(e=>{toast('Erro ao consultar estoque '+loja,'err');console.error(e);})
+    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=icon+' Estoque '+loja;}});
+}
 function toggleTransfRouteCheck(date, orig, nota, cb){
   if(!ST.transfChecks[date]) ST.transfChecks[date] = {};
   ST.transfChecks[date][`route__${orig}__${nota}__done`] = cb.checked;
@@ -7056,6 +7086,8 @@ function _renderTransfResumo(el){
     <h3 style="margin:0;font-size:16px;color:#5b21b6">📊 Resumo do Dia</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button onclick="consultarEstoqueCD('${date}')" id="btn-estoque-${date}" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">🏭 Estoque CD</button>
+      <button onclick="consultarEstoqueLoja('Matriz','${date}')" id="btn-estoque-matriz-${date}" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">🏢 Estoque Matriz</button>
+      <button onclick="consultarEstoqueLoja('Filial','${date}')" id="btn-estoque-filial-${date}" style="background:#d97706;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">🏪 Estoque Filial</button>
       <button onclick="downloadTransfResumoExcel('${date}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">📥 Baixar Excel</button>
     </div>
   </div>`;
@@ -7091,8 +7123,12 @@ function _renderTransfResumo(el){
     const routeKey=`route__${route.orig}__${route.nota}__done`;
     const transfDone=!!((ST.transfChecks[date]||{})[routeKey]);
     const showCmc=route.orig==='CD';
+    const showEstoqueLoja=route.orig==='Matriz'||route.orig==='Filial';
+    const showCmcLoja=showEstoqueLoja;
     const cmcMap=showCmc?getCmc():{};
     const icmsMap=showCmc?getIcms():{};
+    const estoqueColColor=route.orig==='Matriz'?'#7c3aed':route.orig==='Filial'?'#d97706':'#0369a1';
+    const estoqueColLabel=showEstoqueLoja?'Estoque '+route.orig:'Estoque CD';
     html += `<div class="transf-resumo-card" style="margin-bottom:14px;${transfDone?'opacity:.7':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:8px">
@@ -7115,9 +7151,10 @@ function _renderTransfResumo(el){
         <thead><tr>
           <th>SKU</th><th>Produto</th><th style="text-align:center">Qtd</th>
           <th>Origem</th><th>Destino Físico</th><th>NF</th>
-          <th style="text-align:center;color:#0369a1;white-space:nowrap">Estoque CD</th>
+          <th style="text-align:center;color:${estoqueColColor};white-space:nowrap">${estoqueColLabel}</th>
           ${showCmc?'<th style="text-align:right;color:#b45309">CMC (R$)</th>':''}
           ${showCmc?'<th style="text-align:right;color:#7c3aed">CMC Final (R$)</th>':''}
+          ${showCmcLoja?'<th style="text-align:right;color:#b45309">CMC Omie (R$)</th>':''}
           <th></th>
         </tr></thead>
         <tbody>`;
@@ -7139,7 +7176,19 @@ function _renderTransfResumo(el){
       const cmcFinal=cmcVal!=null?cmcVal*(1+(icmsPct||0)):null;
       const rowBg=_rpt2?'background:#fff5f5':r._resumoAdded?'background:#f5f3ff':'';
       const editDel='<td></td>';
-      const rptNote2=_rpt2?`<tr style="background:#fff5f5"><td colspan="${showCmc?10:8}" style="padding:3px 8px 5px 16px;font-size:11px;color:#dc2626"><strong>⚠ ${_rpt2.tab||'Reporte'}:</strong> ${esc(_rpt2.obs)}</td></tr>`:'';
+      const _colspan=showCmc?10:showCmcLoja?9:8;
+      const rptNote2=_rpt2?`<tr style="background:#fff5f5"><td colspan="${_colspan}" style="padding:3px 8px 5px 16px;font-size:11px;color:#dc2626"><strong>⚠ ${_rpt2.tab||'Reporte'}:</strong> ${esc(_rpt2.obs)}</td></tr>`:'';
+      const _sk=(r.sku||'').toUpperCase();
+      const _estoqueCell=(()=>{
+        let _e=null;
+        if(r.origem==='CD'){_e=window._estoqueData&&window._estoqueData[_sk]!=null?window._estoqueData[_sk]:null;}
+        else if(r.origem==='Matriz'){_e=window._estoqueLojaData&&window._estoqueLojaData['Matriz']&&window._estoqueLojaData['Matriz'][_sk]!=null?window._estoqueLojaData['Matriz'][_sk]:null;}
+        else if(r.origem==='Filial'){_e=window._estoqueLojaData&&window._estoqueLojaData['Filial']&&window._estoqueLojaData['Filial'][_sk]!=null?window._estoqueLojaData['Filial'][_sk]:null;}
+        if(_e==null)return '<span style="color:#9ca3af;font-size:11px">—</span>';
+        const _ec=parseFloat(_e);const _col=_ec<=0?'#dc2626':_ec<r.qtd?'#d97706':'#16a34a';
+        return '<span style="font-weight:700;color:'+_col+'">'+_ec.toLocaleString('pt-BR',{maximumFractionDigits:2})+'</span>';
+      })();
+      const _cmcLojaVal=(showCmcLoja&&window._cmcLojaData&&window._cmcLojaData[route.orig])?window._cmcLojaData[route.orig][_sk]??null:null;
       html += `<tr style="${rowBg}">
         <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
         <td style="font-weight:500;font-size:13px">${r.nome||r.sku||'—'}${kitTag}${label}</td>
@@ -7147,9 +7196,10 @@ function _renderTransfResumo(el){
         <td><span style="background:${origemBg};color:${origemColor};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${sepDone?'✓ ':''  }${r.origem||'—'}</span></td>
         <td><span style="background:${destBg};color:${destColor};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${recDone?'✓ ':''}${r.destFisico||'—'}</span></td>
         <td style="font-size:12px;color:#374151">${nf}</td>
-        <td style="text-align:center;font-size:12px">${(()=>{if(r.origem!=='CD')return '<span style="color:#9ca3af;font-size:11px">—</span>';const _sk=(r.sku||'').toUpperCase();const _e=window._estoqueData&&window._estoqueData[_sk];if(_e==null)return '<span style="color:#9ca3af;font-size:11px">—</span>';const _ec=parseFloat(_e);const _col=_ec<=0?'#dc2626':_ec<r.qtd?'#d97706':'#16a34a';return '<span style="font-weight:700;color:'+_col+'">'+_ec.toLocaleString('pt-BR',{maximumFractionDigits:2})+'</span>';})()} </td>
+        <td style="text-align:center;font-size:12px">${_estoqueCell}</td>
         ${showCmc?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${cmcVal!=null?'R$ '+cmcVal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'}</td>`:''}
         ${showCmc?(()=>{if(!showCmc)return '';const pctTag=icmsPct?`<br><span style="font-size:10px;color:#9333ea;font-weight:400">+${(icmsPct*100).toFixed(2)}%</span>`:'';return `<td style="text-align:right;font-size:12px;color:#7c3aed;font-weight:600">${cmcFinal!=null?'R$ '+cmcFinal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})+pctTag:'—'}</td>`;})():''}
+        ${showCmcLoja?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${_cmcLojaVal!=null?'R$ '+_cmcLojaVal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'}</td>`:''}
         ${editDel}
       </tr>${rptNote2}`;
     });
@@ -7203,8 +7253,10 @@ function downloadTransfResumoExcel(date){
     const rows = filteredRows.filter(r=>r.origem===route.orig && r.destNota===route.nota);
     if(!rows.length) return;
     const showCmcXl=route.orig==='CD';
+    const showCmcLojaXl=route.orig==='Matriz'||route.orig==='Filial';
     const hdr=['SKU','Produto','Qtd','Origem','Destino Físico','NF Transferência','Separação','Recebimento','Transf. Realizada'];
     if(showCmcXl){hdr.push('CMC (R$)','CMC Final (R$)');}
+    if(showCmcLojaXl){hdr.push('Estoque '+route.orig,'CMC Omie (R$)');}
     wsData.push([route.label,...Array(hdr.length-1).fill('')]);
     wsData.push(hdr);
     const routeKey=`route__${route.orig}__${route.nota}__done`;
@@ -7222,6 +7274,12 @@ function downloadTransfResumoExcel(date){
         const cmcFinal=cmc!=null?cmc*(1+(pct||0)):null;
         row.push(cmc!=null?cmc:'');
         row.push(cmcFinal!=null?cmcFinal:'');
+      }
+      if(showCmcLojaXl){
+        const _sk2=(r.sku||'').toUpperCase();
+        const _est=window._estoqueLojaData&&window._estoqueLojaData[route.orig]?window._estoqueLojaData[route.orig][_sk2]??'':''
+        const _cmc2=window._cmcLojaData&&window._cmcLojaData[route.orig]?window._cmcLojaData[route.orig][_sk2]??'':'';
+        row.push(_est,_cmc2);
       }
       wsData.push(row);
     });
@@ -7606,45 +7664,4 @@ function addTcToRoute(tcId, routeType, per){
             <thead>
               <tr style="background:#f1f5f9">
                 <th style="padding:6px 4px;text-align:center"><input type="checkbox" id="tcSelectAll" onclick="toggleTcSelectAll(this)" style="cursor:pointer" title="Selecionar todos"></th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:left"></th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:left">SKU</th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:left">Nome do produto</th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:center">Qtd</th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:left">Origem</th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:left">Destino físico</th>
-                <th style="padding:6px 4px;font-size:0.7rem;color:#6b7280;font-weight:600;text-align:left">Nota transf.</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="tcProdLista">
-              <tr id="tcProdEmpty"><td colspan="9" style="padding:8px;font-size:0.77rem;color:#9ca3af;text-align:center">Nenhum produto adicionado ainda.</td></tr>
-            </tbody>
-            <tfoot>
-              <tr style="background:#f8fafc;border-top:1px solid #e5e7eb">
-                <td style="padding:6px 4px"></td>
-                <td style="padding:6px 4px"></td>
-                <td colspan="2" style="padding:6px 4px"><input type="text" id="tcProdSku" placeholder="🔍 SKU ou nome do produto..." autocomplete="off" oninput="searchProdutoTc()" onblur="hideProdutoDropdownTc()" style="width:100%;font-size:0.78rem;padding:4px 5px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box"><input type="hidden" id="tcProdSkuReal"><input type="hidden" id="tcProdNome"></td>
-                <td style="padding:6px 4px"><input type="number" id="tcProdQtd" placeholder="Qtd" min="1" style="width:100%;font-size:0.78rem;padding:4px 3px;border:1px solid #d1d5db;border-radius:5px;box-sizing:border-box;text-align:center"></td>
-                <td style="padding:6px 4px"><select id="tcProdOrigem" style="width:100%;font-size:0.76rem;padding:4px 3px;border:1px solid #d1d5db;border-radius:5px"><option value="CD">CD</option><option value="Matriz">Matriz</option><option value="Filial">Filial</option></select></td>
-                <td style="padding:6px 4px"><select id="tcProdDestFisico" style="width:100%;font-size:0.76rem;padding:4px 3px;border:1px solid #d1d5db;border-radius:5px"><option value="">— Destino —</option><option value="CD">CD</option><option value="Matriz">Matriz</option><option value="Filial">Filial</option><option value="Cliente">Cliente</option></select></td>
-                <td style="padding:6px 4px"><select id="tcProdDestNota" style="width:100%;font-size:0.76rem;padding:4px 3px;border:1px solid #d1d5db;border-radius:5px"><option value="Filial">Filial</option><option value="Matriz">Matriz</option><option value="CD">CD</option><option value="nao_possui">Não possui</option></select></td>
-                <td style="padding:6px 4px;text-align:center"><button type="button" onclick="addTcProduto()" style="width:24px;height:24px;background:#3b82f6;color:#fff;border:none;border-radius:5px;font-size:1rem;cursor:pointer;font-weight:700;line-height:1;padding:0" title="Adicionar">+</button></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-      <div class="fg">
-        <label>👤 Seu nome <span style="color:#ef4444;font-size:0.72rem">*obrigatório</span></label>
-        <input type="text" id="tcAutor" placeholder="Nome de quem está preenchendo">
-      </div>
-    </div>
-    <div class="mfooter">
-      <button class="btn btn-danger btn-sm" id="tcBtnDel" onclick="deleteTcCard()" style="display:none;margin-right:auto">Excluir</button>
-      <button class="btn btn-outline btn-sm" onclick="closeTcForm()">Cancelar</button>
-      <button class="btn btn-primary btn-sm" onclick="saveTcCard()">Salvar</button>
-    </div>
-  </div>
-</div>
-</body>
-</html>
+                <th style="padding:6px 4px;fo
