@@ -1136,9 +1136,9 @@ function initFirebase(){
     _fbDb=firebase.database();
     _fbDb.ref('cdl_state').on('value',(snap)=>{
       if(_fbSaving||!snap.exists())return;
+      _applyState(snap.val()); // Always update local state, even with modal open
       const modalOpen=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');
-      if(modalOpen)return;
-      _applyState(snap.val());
+      if(modalOpen)return; // Don't re-render while user has a modal open
       renderSidebar();
       renderContent();
     });
@@ -1617,17 +1617,47 @@ function routeEndTime(perStart,data){
   });
   return cur;
 }
-function lunchBannerHTML(morningEnd){
+function lunchBannerHTML(morningEnd,plan){
   const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
-  const lunchStart=Math.max(12*60+30,morningEnd);
+  const override=plan&&plan.lunchOverride!=null?plan.lunchOverride:null;
+  const lunchStart=override!=null?override:Math.max(12*60+30,morningEnd);
   const lunchEnd=lunchStart+60;
   const delay=lunchStart-(12*60+30);
   let cls='lunch-ok',icon='🍽',msg='';
-  if(delay===0){msg=`Almoço no CD — 12h30 às 13h30`;}
+  if(override!=null){cls='lunch-ok';msg=`Almoço ajustado — ${fmHH(lunchStart)} às ${fmHH(lunchEnd)}`;}
+  else if(delay===0){msg=`Almoço no CD — 12h30 às 13h30`;}
   else if(delay<=30){cls='lunch-late';icon='⚠';msg=`Almoço com ${delay}min de atraso — ${fmHH(lunchStart)} às ${fmHH(lunchEnd)}`;}
   else if(delay<=60){cls='lunch-crit';icon='🟠';msg=`Almoço muito atrasado — ${fmHH(lunchStart)} às ${fmHH(lunchEnd)} — considere reajustar a rota`;}
   else{cls='lunch-crit';icon='🔴';msg=`Almoço comprometido — motorista só chega ao CD às ${fmHH(morningEnd)} — rota precisa ser reajustada`;}
-  return`<div class="lunch-banner ${cls}">${icon} ${msg}</div>`;
+  const editBtn=`<button onclick="startEditLunch()" style="margin-left:8px;padding:1px 6px;font-size:0.7rem;border:1px solid currentColor;border-radius:5px;background:transparent;cursor:pointer;color:inherit" title="Editar horário de almoço">✏️ editar</button>`;
+  return`<div class="lunch-banner ${cls}" id="lunch-banner-row">${icon} ${msg}${editBtn}</div>`;
+}
+function startEditLunch(){
+  const plan=curPlan();if(!plan)return;
+  const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+  const morningEnd=routeEndTime(8*60+30,plan.manha);
+  const cur=plan.lunchOverride!=null?plan.lunchOverride:Math.max(12*60+30,morningEnd);
+  const row=document.getElementById('lunch-banner-row');
+  if(!row)return;
+  row.innerHTML=`<span style="font-weight:600">🍽 Almoço:</span>
+    <input type="time" id="lunch-time-inp" value="${fmHH(cur)}" style="margin:0 6px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:0.82rem">
+    <button onclick="saveLunchOverride()" style="padding:2px 8px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:0.78rem;cursor:pointer;font-weight:600">✓ Salvar</button>
+    <button onclick="clearLunchOverride()" style="padding:2px 6px;background:transparent;border:1px solid #6b7280;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#6b7280;margin-left:4px" title="Restaurar padrão">↩</button>`;
+  setTimeout(()=>document.getElementById('lunch-time-inp')?.focus(),30);
+}
+function saveLunchOverride(){
+  const plan=curPlan();if(!plan)return;
+  const val=document.getElementById('lunch-time-inp')?.value;
+  if(!val)return;
+  const [h,m]=val.split(':').map(Number);
+  plan.lunchOverride=h*60+m;
+  save();renderRoutePanels();
+  toast('Horário de almoço atualizado ✓','ok');
+}
+function clearLunchOverride(){
+  const plan=curPlan();if(!plan)return;
+  plan.lunchOverride=null;
+  save();renderRoutePanels();
 }
 function renderRoutePanels(){
   const area=document.getElementById('routePanels');
@@ -1639,27 +1669,28 @@ function renderRoutePanels(){
   const plan=curPlan();
   const mStart=8*60+30;
   const morningEnd=routeEndTime(mStart,plan.manha);
-  const lunchStart=Math.max(12*60+30,morningEnd);
+  const _lunchBase=Math.max(12*60+30,morningEnd);
+  const lunchStart=plan.lunchOverride!=null?plan.lunchOverride:_lunchBase;
   const afternoonStart=lunchStart+60;
-  const lunch=lunchBannerHTML(morningEnd);
+  const lunch=lunchBannerHTML(morningEnd,plan);
   const tardeBase=plan.tardeBase||'CD';
   const tbLabels={'CD':'CD Galpão','Matriz':'Loja Matriz','Filial':'Loja Filial'};
   let tbBtns='';
   ['CD','Matriz','Filial'].forEach(function(b){
     tbBtns+='<button class="tarde-base-btn'+(b===tardeBase?' active':'')+'" data-base="'+b+'" onclick="setTardeBase(this.dataset.base)">'+tbLabels[b]+'</button>';
   });
-  const tardeTitleEl='Tarde <span class="tarde-base-sel">'+tbBtns+'</span>';
+  const tardeBaseExtra='<div class="tarde-base-sel" style="margin-top:4px">'+tbBtns+'</div>';
   // Garantir start/return nos períodos
   ['manha','tarde'].forEach(p=>{if(plan[p]&&plan[p].stops){normalizeStartStop(p);normalizeReturnStop(p);}});
-  area.innerHTML=`<div class="route-cols"><div id="pM">${panelHTML('manha',plan.manha,'Manhã — 08h30',mStart)}</div><div id="pT">${panelHTML('tarde',plan.tarde,tardeTitleEl,afternoonStart,lunch)}</div></div>`;
+  area.innerHTML=`<div class="route-cols"><div id="pM">${panelHTML('manha',plan.manha,'Manhã — 08h30',mStart)}</div><div id="pT">${panelHTML('tarde',plan.tarde,'Tarde',afternoonStart,lunch,tardeBaseExtra)}</div></div>`;
   initDrag();
 }
 
-function panelHTML(per,data,title,perStartOverride,lunchBannerOverride){
+function panelHTML(per,data,title,perStartOverride,lunchBannerOverride,headerExtra){
   const perStart=perStartOverride??(per==='manha'?8*60+30:13*60+30);
   if(!data||!data.stops||!data.stops.length){
     const emptyZone=editingRoute?`<ul class="route-stops" id="ls-${per}" data-p="${per}" ondragover="event.preventDefault()" ondrop="ulDrop(event,'${per}')" style="min-height:80px"><li style="list-style:none"><div style="border:2px dashed #cbd5e1;border-radius:8px;padding:20px;text-align:center;color:#94a3b8;font-size:0.8rem;margin:4px 0">Arraste entregas para cá</div></li></ul>`:'';
-    return`<div class="rpanel"><div class="rpanel-hdr"><h3>${title}</h3></div>${lunchBannerOverride||''}${emptyZone}<div style="color:#9ca3af;font-size:0.82rem;padding:${editingRoute?'4':'16'}px 0 8px;text-align:center">Sem entregas neste período</div></div>`;
+    return`<div class="rpanel"><div class="rpanel-hdr"><h3>${title}</h3>${headerExtra||''}</div>${lunchBannerOverride||''}${emptyZone}<div style="color:#9ca3af;font-size:0.82rem;padding:${editingRoute?'4':'16'}px 0 8px;text-align:center">Sem entregas neste período</div></div>`;
   }
   const mu=buildMapsUrl(data.stops);
   const info=[data.stops.length+' paradas',data.totalDist?fmD(data.totalDist):'',data.totalDur?fmT(data.totalDur):''].filter(Boolean).join(' · ');
@@ -1766,7 +1797,7 @@ function panelHTML(per,data,title,perStartOverride,lunchBannerOverride){
     routeWarn=`<div class="route-warn red">🔴 Rota apertada — previsão de retorno ao CD às ${fmHHMM(lastTime)}, após o limite de 17h00. Reajuste necessário.</div>`;
   }
   sl+='</ul>';
-  return`<div class="rpanel"><div class="rpanel-hdr"><h3>${title}</h3><p>${info}</p></div>${lunchBanner}${sl}${routeWarn}${mu?`<a href="${mu}" target="_blank" class="maps-go">Abrir no Google Maps</a>`:''}</div>`;
+  return`<div class="rpanel"><div class="rpanel-hdr"><h3>${title}</h3>${headerExtra||''}<p>${info}</p></div>${lunchBanner}${sl}${routeWarn}${mu?`<a href="${mu}" target="_blank" class="maps-go">Abrir no Google Maps</a>`:''}</div>`;
 }
 
 function stopMeta(s){
@@ -2007,8 +2038,9 @@ function reRenderPanels(){
   const pm=document.getElementById('pM'),pt=document.getElementById('pT');
   const mStart=8*60+30;
   const morningEnd=routeEndTime(mStart,plan.manha);
-  const lunchStart=Math.max(12*60+30,morningEnd);
-  const lunch=lunchBannerHTML(morningEnd);
+  const _lunchBase2=Math.max(12*60+30,morningEnd);
+  const lunchStart=plan.lunchOverride!=null?plan.lunchOverride:_lunchBase2;
+  const lunch=lunchBannerHTML(morningEnd,plan);
   if(pm)pm.innerHTML=panelHTML('manha',plan.manha,'Manhã — 08h30',mStart);
   if(pt)pt.innerHTML=panelHTML('tarde',plan.tarde,'Tarde',lunchStart+60,lunch);
   initDrag();
@@ -3862,7 +3894,7 @@ function setDriverStatus(statusKey,status,recebidoPor){
   save();
   renderDriverView();
   const pg=document.getElementById('page-gestao');
-  if(pg&&pg.style.display!=='none')renderRouteSection();
+  if(pg&&pg.style.display!=='none'){renderCards();renderRouteSection();}
 }
 let _pendingEntregueKey=null;
 function renderDrvProdChecklist(d, statusKey){
