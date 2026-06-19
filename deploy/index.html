@@ -5861,7 +5861,7 @@ function consultarEstoqueLoja(loja,date){
   const skus=[...new Set(allRows.filter(r=>r.origem===loja).map(r=>(r.sku||'').toUpperCase()).filter(Boolean))];
   if(!skus.length){toast('Nenhum SKU de '+loja+' encontrado','err');if(btn){btn.disabled=false;btn.textContent=icon+' Estoque '+loja;}return;}
   fetch('/api/estoque_loja',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loja,skus})})
-    .then(r=>r.json())
+    .then(async r=>{if(!r.ok){const txt=await r.text();throw new Error('HTTP '+r.status+': '+txt.slice(0,200));}return r.json();})
     .then(data=>{
       if(data.erro){toast('Erro Omie: '+data.erro,'err');return;}
       if(!window._estoqueLojaData) window._estoqueLojaData={};
@@ -5879,7 +5879,7 @@ function consultarEstoqueLoja(loja,date){
       _renderTransfContent();
       toast('Estoque '+loja+' atualizado ✓','ok');
     })
-    .catch(e=>{toast('Erro ao consultar estoque '+loja,'err');console.error(e);})
+    .catch(e=>{toast('Erro '+loja+': '+e.message,'err');console.error('[estoque_loja]',e);})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=icon+' Estoque '+loja;}});
 }
 function toggleTransfRouteCheck(date, orig, nota, cb){
@@ -7663,5 +7663,4 @@ function addTcToRoute(tcId, routeType, per){
             </colgroup>
             <thead>
               <tr style="background:#f1f5f9">
-                <th style="padding:6px 4px;text-align:center"><input type="checkbox" id="tcSelectAll" onclick="toggleTcSelectAll(this)" style="cursor:pointer" title="Selecionar todos"></th>
-                <th style="padding:6px 4px;fo
+                <th style="padding:6px 4px;text-align:center"><input type="checkbox" id="tcSelectAll" onclick="toggl
