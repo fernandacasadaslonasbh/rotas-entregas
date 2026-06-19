@@ -2306,14 +2306,43 @@ async function runRouteGeneration(){
     setCurPlan({date:ST.selectedDate,manha:md,tarde:td,routeState:'suggestion',justification:just,alteredBy:'',needsRouting:[],
       transfManha:_oldTransfM,transfTarde:_oldTransfT,
       routeHistorico:[{nome:'Sistema',em:hoje0+' '+now0,acao:'Sugestão de rota gerada automaticamente'}]});
-    // Re-insert TC stops into delivery routes before return stop
+    // Re-insert TC stops into delivery routes, respecting antesEntrega constraints
     const _newPlan=curPlan();
+    function _findDeliveryIdx(stops,antesEntrega){
+      if(!antesEntrega)return -1;
+      const needle=antesEntrega.toLowerCase();
+      // Exact or partial match on client name
+      return stops.findIndex(s=>{
+        if(s.type!=='delivery')return false;
+        const d=ST.deliveries.find(x=>x.id===s.id);
+        if(!d||!d.cliente)return false;
+        const cn=d.cliente.toLowerCase();
+        return cn.includes(needle)||needle.includes(cn);
+      });
+    }
     for(const [per,tcList] of[['manha',_oldTcM],['tarde',_oldTcT]]){
       if(!tcList.length)continue;
       const stops=_newPlan[per].stops;
-      const retIdx=stops.findLastIndex(s=>s.type==='return');
-      const insAt=retIdx>=0?retIdx:stops.length;
-      tcList.forEach(tc=>stops.splice(insAt,0,tc));
+      for(const tcStop of tcList){
+        const tcData=(ST.transfers||[]).find(t=>t.id===tcStop.tcId);
+        const antesEntrega=tcData&&tcData.antesEntrega;
+        let insAt=-1;
+        if(antesEntrega){
+          // Insert BEFORE the named delivery so coleta arrives first
+          insAt=_findDeliveryIdx(stops,antesEntrega);
+          if(insAt<0){
+            // antesEntrega set but delivery not found in this period → warn and insert at start (before first delivery)
+            const firstDeliv=stops.findIndex(s=>s.type==='delivery');
+            insAt=firstDeliv>=0?firstDeliv:stops.findLastIndex(s=>s.type==='return');
+            console.warn('[TC ordem] antesEntrega "'+antesEntrega+'" não encontrado — inserido no início das entregas');
+          }
+        } else {
+          // No constraint — insert just before return stop
+          insAt=stops.findLastIndex(s=>s.type==='return');
+        }
+        if(insAt<0)insAt=stops.length;
+        stops.splice(insAt,0,tcStop);
+      }
     }
     save();
     setLm('Recalculando rotas...');
