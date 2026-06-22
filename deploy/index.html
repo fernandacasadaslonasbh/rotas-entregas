@@ -514,8 +514,8 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
   #routeSection,#routeSection *{box-sizing:border-box;min-width:0}
 
   /* ── Transferências: layout vertical no mobile (só quando ativa) ── */
-  #page-transf[style*="flex"]{display:block!important;overflow:visible!important;height:auto!important}
-  #page-transf[style*="flex"]>div{display:block!important;height:auto!important;overflow:visible!important}
+  #page-transf.mobile-active{display:block!important;overflow:visible!important;height:auto!important}
+  #page-transf.mobile-active>div{display:block!important;height:auto!important;overflow:visible!important}
   #transf-sidebar{
     width:100%!important;min-width:0!important;height:auto!important;
     overflow-x:auto!important;overflow-y:hidden!important;
@@ -524,7 +524,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
     gap:4px!important;padding:6px 8px!important;flex-direction:row!important
   }
   #transf-date-list{display:flex!important;flex-direction:row!important;gap:4px!important}
-  #page-transf>div>div:last-child{overflow:visible!important;height:auto!important;display:block!important}
+  #page-transf.mobile-active>div>div:last-child{overflow:visible!important;height:auto!important;display:block!important}
   #transf-content{overflow:visible!important;height:auto!important;padding:10px 8px!important}
   .transf-subtab{white-space:nowrap;padding:7px 11px;font-size:0.78rem;flex-shrink:0}
   .transf-table{min-width:520px}
@@ -3112,6 +3112,10 @@ function switchTab(tab){
   }
   if(tab==='transf'){
     renderTransfTab();
+  }
+  // Mobile: ativa layout vertical da aba Transferências só quando ela é a ativa
+  if(window.innerWidth<=768){
+    document.getElementById('page-transf').classList.toggle('mobile-active',tab==='transf');
   }
 }
 
