@@ -35,9 +35,9 @@ async function listarProdutos() {
   while (pagina <= totalPaginas) {
     const data = await omie('ListarProdutos', [{
       pagina, registros_por_pagina: 100,
-      apenas_importado_api: 'N', filtrar_apenas_omiepdv: 'N', inativo: 'N'
+      apenas_importado_api: 'N', inativo: 'N'
     }]);
-    if (data.faultstring) break;
+    if (data.faultstring) { pagina++; continue; } // pula página com erro, não para o loop
     totalPaginas = data.total_de_paginas || 1;
     for (const p of (data.produto_servico_cadastro || [])) {
       const sku  = String(p.codigo || '').trim().toLowerCase();
