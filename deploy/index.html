@@ -1506,6 +1506,18 @@ if(st.status==='a_caminho'){const _dsV=planD.driverStatus[per+'_'+i];const _veic
   }
   
 
+function _getTcDrvStatus(tcId){
+  const plan=curPlan();if(!plan)return'pendente';
+  for(const per of['manha','tarde']){
+    const stops=(plan[per]&&plan[per].stops)||[];
+    for(let i=0;i<stops.length;i++){
+      if(stops[i].type==='tc'&&String(stops[i].tcId)===String(tcId)){
+        return getStopStatus(per+'_'+i,plan).status||'pendente';
+      }
+    }
+  }
+  return'pendente';
+}
 function tcSection(){
     if(!tcDay.length)return'';
     let s=`<div class="period-section" style="margin-bottom:16px"><div class="period-hdr" style="background:#f5f3ff;border-left:4px solid #7c3aed;border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><h3 style="color:#5b21b6;margin:0">📋 Transferências / Coletas</h3><span class="period-count">${tcDay.length}</span></div><div class="cards-grid">`;
@@ -1520,7 +1532,9 @@ function tcSection(){
       const destNotaLabel=v=>v==='nao_possui'?'Não possui':v||'—';
       const prodCount=prods.reduce((s,p)=>s+(p.qtd||1),0);
       const borderColor=t.tagImportante?'#dc2626':'#7c3aed';
-      s+=`<div id="tc-card-${t.id}" class="card tc-merge-card"
+      const _tcSt=_getTcDrvStatus(t.id);
+      const _tcDrvCls=_tcSt&&_tcSt!=='pendente'?' drv-s-'+_tcSt:'';
+      s+=`<div id="tc-card-${t.id}" class="card tc-merge-card${_tcDrvCls}"
         style="border-left:4px solid ${borderColor};cursor:pointer${t.tagImportante?';background:#fff5f5':''}" onclick="openEditTcCard('${t.id}')">
         ${t.tagImportante?`<div style="display:flex;align-items:center;gap:6px;background:#fef2f2;border-bottom:1px solid #fecaca;margin:-12px -12px 10px -12px;padding:6px 12px;border-radius:8px 8px 0 0">
           <span style="font-size:0.85rem">⚑</span>
