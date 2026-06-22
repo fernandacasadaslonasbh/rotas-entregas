@@ -5379,7 +5379,7 @@ async function recalcTransfPer(per){
     if(s.type==='waypoint'){if(s.key&&BASES[s.key])await ensureBase(s.key);continue;}
     const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);
     if(!_tc)continue;
-    for(const k of[_tc.pontoDestino,_tc.pontoSaida]){
+    const _inferD=_tcInferDestino(_tc);for(const k of[_inferD,_tc.pontoSaida]){
       if(k&&k!=='Cliente'&&BASES[k]&&!bc[k]){
         try{const co=await geocode(BASES[k].addr);if(co){bc[k]=co;saveBC(bc);}}catch(e){}
       }
@@ -5397,7 +5397,7 @@ async function recalcTransfPer(per){
     } else {
       const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);
       if(!_tc)continue;
-      const _d=_tc.pontoDestino;
+      const _d=_tcInferDestino(_tc);
       if(_d&&_d!=='Cliente'&&bc[_d])pts.push(bc[_d]);
     }
   }
