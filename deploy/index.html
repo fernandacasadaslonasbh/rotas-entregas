@@ -1482,8 +1482,7 @@ function renderCards(){
         </div>
         ${d.restricaoAlmoco==='sim'?`<div class="card-obs" style="color:#b45309;font-size:0.71rem">🚫 Sem entrega no almoço${d.restricaoHorario?' — '+esc(d.restricaoHorario):''}</div>`:''}
         ${d.notasMotorista?`<div class="card-obs">📝 ${esc(d.notasMotorista)}</div>`:''}
-        ${(()=>{const plan=curPlan();if(!plan||!plan.driverStatus)return '';const date=d.data;const planD=ST.routePlans&&ST.routePlans[date];if(!planD)return '';for(const per of['manha','tarde']){const stops=(planD[per]&&planD[per].stops)||[];for(let i=0;i<stops.length;i++){if(stops[i].type==='delivery'&&String(stops[i].id)===String(d.id)){const st=getStopStatus(per+'_'+i,planD);if(st.status==='entregue'&&st.recebidoPor){const _dsV=planD.driverStatus[per+'_'+i];const _veicId=typeof _dsV==='object'?_dsV.veicId:null;const _veic=_veicId?getVeiculos().find(v=>v.id===_veicId):null;const _veicStr=_veic?` · 🚗 ${esc(_veic.modelo)} (${esc(_veic.placa)})`:'';return`<div class="card-obs" style="color:#15803d">✅ Entrega concluída, recebido por ${esc(st.recebidoPor)}${_veicStr}</div>`;}
-if(st.status==='a_caminho'){const _dsV=planD.driverStatus[per+'_'+i];const _veicId=typeof _dsV==='object'?_dsV.veicId:null;const _veic=_veicId?getVeiculos().find(v=>v.id===_veicId):null;if(_veic)return`<div class="card-obs" style="color:#2563eb">🚗 A caminho · ${esc(_veic.modelo)} (${esc(_veic.placa)})</div>`;}}}}return '';})()}
+        ${(()=>{const plan=curPlan();if(!plan||!plan.driverStatus)return '';const date=d.data;const planD=ST.routePlans&&ST.routePlans[date];if(!planD)return '';for(const per of['manha','tarde']){const stops=(planD[per]&&planD[per].stops)||[];for(let i=0;i<stops.length;i++){if(stops[i].type==='delivery'&&String(stops[i].id)===String(d.id)){const st=getStopStatus(per+'_'+i,planD);if(st.status==='entregue'&&st.recebidoPor)return`<div class="card-obs" style="color:#15803d">✅ Entrega concluída, recebido por ${esc(st.recebidoPor)}</div>`;}}}return '';})()}
         <div style="margin-top:6px">
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${d.hasNf?'<span class="att-badge">📄 NF'+(d.nfNumero?' Nº '+esc(d.nfNumero):'')+'</span>':''} ${d.hasBoleto?'<span class="att-badge">🧾 Boleto</span>':''}</div>
           ${cardPrecisaMdfe(d)?`<div onclick="event.stopPropagation();showMdfePreviewCard('${d.id}')" style="padding:4px 8px;background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;font-size:0.72rem;color:#dc2626;font-weight:600;cursor:pointer" title="Clique para ver a mensagem MDF-e">🚛 MDF-e obrigatório — clique para ver ▶</div>`:`<div style="padding:4px 8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:0.72rem;color:#16a34a;font-weight:600">✅ Não precisa de MDF-e</div>`}
@@ -3525,6 +3524,8 @@ function selecionarVeicTC(statusKey, tcId, veicId){
   const prev=plan.driverStatus[statusKey];
   const prevChks=typeof prev==='object'?(prev.prodChecks||null):null;
   plan.driverStatus[statusKey]={status:'a_caminho',veicId,driverId:selDrvId,iniciadoEm:new Date().toISOString(),...(prevChks?{prodChecks:prevChks}:{})};
+  const veic=getVeiculos().find(v=>v.id===veicId);
+  if(veic){const tc=(ST.transfers||[]).find(x=>x.id===tcId);if(tc){_setVeicObs(tc,veic,'obs');}}
   save();renderDriverView();
 }
 function finalizarTC(statusKey){
@@ -3558,18 +3559,23 @@ function clickACaminho(statusKey, delivId){
   window._mdfeDelivId=delivId;
 }
 
+function _setVeicObs(obj, veic, field){
+  const note='Veículo utilizado para a entrega: '+veic.modelo+' ('+veic.placa+')';
+  const cur=(obj[field]||'').split('\n').filter(l=>!l.startsWith('Veículo utilizado para a entrega:')).join('\n').trimEnd();
+  obj[field]=cur?(cur+'\n'+note):note;
+}
 function selecionarVeicACaminho(statusKey, delivId, veicId){
   closeMdfeModal();
-  // salva status + veicId no driverStatus
   const plan=curPlan();
   if(!plan){setDriverStatus(statusKey,'a_caminho');return;}
   if(!plan.driverStatus)plan.driverStatus={};
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'a_caminho',veicId};
+  const veic=getVeiculos().find(v=>v.id===veicId);
+  if(veic){const d=ST.deliveries.find(x=>x.id===delivId);if(d){_setVeicObs(d,veic,'notasMotorista');}}
   save();
   renderDriverView();
-  // restaura botão confirm para próximas aberturas
   const cb=document.getElementById('mdfe-modal-confirm');
   if(cb)cb.style.display='';
 }
@@ -4050,6 +4056,8 @@ function selecionarVeicIniciar(statusKey, delivId, veicId){
   const _sviPrev=plan.driverStatus[statusKey];
   const _sviChks=typeof _sviPrev==='object'?(_sviPrev.prodChecks||null):null;
   plan.driverStatus[statusKey]={status:'a_caminho',veicId,mdfeSent:false,driverId:selDrvId,iniciadoEm:new Date().toISOString(),...(_sviChks?{prodChecks:_sviChks}:{})};
+  const veic=getVeiculos().find(v=>v.id===veicId);
+  if(veic){const d=ST.deliveries.find(x=>x.id===delivId);if(d){_setVeicObs(d,veic,'notasMotorista');}}
   save();renderDriverView();
   const cb=document.getElementById('mdfe-modal-confirm');if(cb)cb.style.display='';
 }
