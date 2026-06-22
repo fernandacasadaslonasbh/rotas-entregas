@@ -1584,6 +1584,9 @@ function renderJustArea(){
   if(editingRoute){editArea.style.display='';area.innerHTML='';return;}
   editArea.style.display='none';
   if(!hasRoute){area.innerHTML='';return;}
+  // Se não há entregas nem TCs para o dia, oculta a justificativa
+  const _hasDayContent=dayD(ST.selectedDate).length||(ST.transfers||[]).some(t=>t.data===ST.selectedDate);
+  if(!_hasDayContent){area.innerHTML='';return;}
   const rp=curPlan();
   function routeHistHTML(rp){
     const h=rp.routeHistorico||[];if(!h.length)return'';
