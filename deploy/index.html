@@ -3467,6 +3467,8 @@ function renderDriverView(){
             +'<span style="'+(chk?'text-decoration:line-through;color:#9ca3af':'color:#1e293b')+';font-size:0.85rem">'+lbl+'</span>'
             +'</div>';
         }
+        const _allTcProdChk=prodsTc.length>0&&prodsTc.every((_,i)=>!!chksTc[i]);
+        const _markAllTcBtn=status!=='entregue'?'<div style="margin-top:8px"><button onclick="marcarTodosCheck(\''+statusKey+'\','+prodsTc.length+')" style="font-size:0.8rem;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:7px;padding:4px 12px;cursor:pointer;color:#7c3aed;font-weight:600">'+(_allTcProdChk?'☐ Desmarcar todos':'✓ Marcar todos')+'</button></div>':'';
         const levarHtml=levar.length
           ?'<div style="margin-top:10px"><div style="font-size:0.74rem;font-weight:700;color:#7c3aed;margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px">📤 Levar ao '+esc(tc.pontoDestino||'destino')+'</div>'
             +levar.map(pr=>tcProdRow(pr)).join('')+'</div>':'';
@@ -3492,7 +3494,7 @@ function renderDriverView(){
           </div>
           ${tc.obs?`<div class="drv-obs">📝 ${esc(tc.obs)}</div>`:''}
           ${destAddr?`<div class="drv-info-grid"><div class="drv-info-row"><span class="drv-info-label">Endereço</span><span>${esc(destAddr)} <a href="${mLinkTc}" target="_blank" style="color:#3b82f6;font-size:0.78rem">🗺 Maps</a></span></div></div>`:''}
-          ${levarHtml}${recolherHtml}
+          ${_markAllTcBtn}${levarHtml}${recolherHtml}
           ${tcActionHtml}
         </div>`;
         return;
