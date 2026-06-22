@@ -5856,6 +5856,17 @@ function _getCheck(date, tcId, prodIdx, type){
   return !!((ST.transfChecks[date]||{})[_chkKey(tcId,prodIdx,type)]);
 }
 
+function marcarTodosTransfAll(date, type, btn){
+  if(!ST.transfChecks[date])ST.transfChecks[date]={};
+  // descobrir rows para este date+type buscando pela tabela mais próxima
+  const tbl=btn.closest('.transf-section-title')?.nextElementSibling?.querySelector('table');
+  if(tbl){
+    const trs=tbl.querySelectorAll('tbody tr[data-tcid]');
+    const allChk=[...trs].every(tr=>_getCheck(date,tr.dataset.tcid,+tr.dataset.pidx,type));
+    trs.forEach(tr=>{ST.transfChecks[date][_chkKey(tr.dataset.tcid,+tr.dataset.pidx,type)]=!allChk;});
+  }
+  save();_renderTransfContent();
+}
 function marcarTodosTransf(date, type, headerCb){
   const tbl=headerCb.closest('table');if(!tbl)return;
   const trs=tbl.querySelectorAll('tbody tr[data-tcid]');
@@ -6661,12 +6672,16 @@ function _renderTransfLoc(el, loc){
   html+=`<div style="color:#6b7280;font-size:12px;margin-bottom:10px">${_fmt_date(date)}</div>`;
 
   // ── SEPARAÇÃO ──
-  html+=`<div class="transf-section-title">📤 Separação ${badge(sepPend,'#7c3aed')}${printBtn('sep','Separação')}${menuBtn('sep')}</div>`;
+  const _mkAllBtn=(type2,rows2)=>{
+    const _a=rows2.every(r=>_getCheck(date,r.tcId,r.prodIdx,type2));
+    return `<button onclick="marcarTodosTransfAll('${date}','${type2}',this)" style="font-size:11px;background:none;border:1px solid #d1d5db;border-radius:6px;padding:2px 8px;cursor:pointer;color:#6b7280;white-space:nowrap">${_a?'☐ Desmarcar todos':'✓ Marcar todos'}</button>`;
+  };
+  html+=`<div class="transf-section-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">📤 Separação ${badge(sepPend,'#7c3aed')}${printBtn('sep','Separação')}${_mkAllBtn('sep',sepRows)}</div>`;
   html+=_buildSectionTable(sepRows, date, 'sep');
   html+=_buildChangelogBlock(sepOvr);
 
   // ── RECEBIMENTOS ──
-  html+=`<div class="transf-section-title" style="margin-top:20px">📥 Recebimentos ${badge(recPend,'#059669')}${printBtn('rec','Recebimentos')}${menuBtn('rec')}</div>`;
+  html+=`<div class="transf-section-title" style="margin-top:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📥 Recebimentos ${badge(recPend,'#059669')}${printBtn('rec','Recebimentos')}${_mkAllBtn('rec',recRows)}</div>`;
   html+=_buildSectionTable(recRows, date, 'rec');
   html+=_buildChangelogBlock(recOvr);
 
@@ -6690,10 +6705,15 @@ function _getDriverProdCheck(date, delivId, prodIdx){
 }
 function _buildSectionTable(rows, date, type){
   if(!rows.length) return '<div class="transf-empty">Nenhum item.</div>';
+  const _allBST=rows.every(r=>_getCheck(date,r.tcId,r.prodIdx,type));
+  const _someBST=!_allBST&&rows.some(r=>_getCheck(date,r.tcId,r.prodIdx,type));
+  const _bstId='bstCb_'+date+'_'+type+'_'+Math.random().toString(36).slice(2,6);
+  const _thCb='<input type="checkbox" id="'+_bstId+'"'+(_allBST?' checked':'')+' title="Marcar/desmarcar todos" style="cursor:pointer;accent-color:#7c3aed;width:15px;height:15px" onchange="marcarTodosTransf(\''+date+'\',\''+type+'\',this)">';
   let h='<table class="transf-table"><thead><tr>'
     +'<th>SKU</th><th>Produto</th><th style="text-align:center">Qtd</th>'
-    +'<th>Origem</th><th>Destino Físico</th><th>NF Transferência</th><th>✓</th><th title="Reportar" style="color:#dc2626;text-align:center">⚠</th>'
+    +'<th>Origem</th><th>Destino Físico</th><th>NF Transferência</th><th title="Marcar/desmarcar todos">'+_thCb+'</th><th title="Reportar" style="color:#dc2626;text-align:center">⚠</th>'
     +'</tr></thead><tbody>';
+  setTimeout(()=>{const el=document.getElementById(_bstId);if(el)el.indeterminate=_someBST;},0);
   rows.forEach(r=>{
     const isMirror=!!r._mirrorFrom;
     const chk=_getCheck(date,r.tcId,r.prodIdx,type);
