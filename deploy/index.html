@@ -3295,7 +3295,9 @@ function renderDrvTransfView(driverId, dateEl, content){
       if(tc.data)out+='<div class="drv-info-row"><span class="drv-info-label">Data</span><span>'+esc(tc.data)+'</span></div>';
       if(tc.veiculo)out+='<div class="drv-info-row"><span class="drv-info-label">Ve\u00edculo</span><span>'+esc(tc.veiculo)+'</span></div>';
       if(prods.length){
-        out+='<div class="drv-info-row" style="align-items:flex-start"><span class="drv-info-label">Produtos</span><div>';
+        const _allTcChk=prods.every((_,i)=>!!chks[i]);
+        const _tcBtnMark=status!=='entregue'?'<button onclick="marcarTodosCheck(\''+statusKey+'\','+prods.length+')" style="font-size:0.75rem;background:none;border:1px solid #d1d5db;border-radius:6px;padding:2px 8px;cursor:pointer;color:#6b7280;margin-bottom:8px;white-space:nowrap">'+(_allTcChk?'☐ Desmarcar todos':'✓ Marcar todos')+'</button><br>':'';
+        out+='<div class="drv-info-row" style="align-items:flex-start"><span class="drv-info-label">Produtos</span><div>'+_tcBtnMark;
         prods.forEach((p,i)=>{
           const chk=!!chks[i];
           const lbl=(p.sku?'<strong>'+esc(p.sku)+'</strong> \u2014 ':'')+esc(p.nome)+' \u00d7 '+p.qtd;
@@ -4012,7 +4014,20 @@ function renderDrvProdChecklist(d, statusKey){
       +'<span style="'+(chk?'text-decoration:line-through;color:#9ca3af':'color:#1e293b')+';font-size:0.85rem">'+lbl+'</span>'
       +'</div>';
   }).join('');
-  return '<div class="drv-info-row" style="align-items:flex-start"><span class="drv-info-label">Produtos</span><span>'+itemsHtml+'</span></div>';
+  const allChked=arr.every((_,i)=>!!prodChecks[i]);
+  const btnMarcar=isEntregue?'':'<button onclick="marcarTodosCheck(\''+statusKey+'\','+arr.length+')" style="font-size:0.75rem;background:none;border:1px solid #d1d5db;border-radius:6px;padding:2px 8px;cursor:pointer;color:#6b7280;margin-bottom:8px;white-space:nowrap">'+(allChked?'☐ Desmarcar todos':'✓ Marcar todos')+'</button><br>';
+  return '<div class="drv-info-row" style="align-items:flex-start"><span class="drv-info-label">Produtos</span><span>'+btnMarcar+itemsHtml+'</span></div>';
+}
+function marcarTodosCheck(statusKey, total){
+  const plan=curPlan();if(!plan)return;
+  if(!plan.driverStatus)plan.driverStatus={};
+  const cur=plan.driverStatus[statusKey];
+  const prev=typeof cur==='object'?{...cur}:{status:cur||'pendente'};
+  if(!prev.prodChecks)prev.prodChecks={};
+  const allChk=Object.keys(prev.prodChecks).length===total&&Object.values(prev.prodChecks).every(Boolean);
+  for(let i=0;i<total;i++)prev.prodChecks[i]=!allChk;
+  plan.driverStatus[statusKey]=prev;
+  save();renderDriverView();
 }
 function toggleDrvProdCheck(statusKey, prodIdx, cb){
   const plan=curPlan();if(!plan)return;
@@ -5841,6 +5856,20 @@ function _getCheck(date, tcId, prodIdx, type){
   return !!((ST.transfChecks[date]||{})[_chkKey(tcId,prodIdx,type)]);
 }
 
+function marcarTodosTransf(date, type, headerCb){
+  const tbl=headerCb.closest('table');if(!tbl)return;
+  const trs=tbl.querySelectorAll('tbody tr[data-tcid]');
+  const allChk=[...trs].every(tr=>_getCheck(date,tr.dataset.tcid,+tr.dataset.pidx,type));
+  if(!ST.transfChecks[date])ST.transfChecks[date]={};
+  trs.forEach(tr=>{
+    const k=_chkKey(tr.dataset.tcid,+tr.dataset.pidx,type);
+    ST.transfChecks[date][k]=!allChk;
+  });
+  save();
+  headerCb.checked=!allChk;
+  headerCb.indeterminate=false;
+  _renderTransfContent();
+}
 function toggleTransfCheck(date, tcId, prodIdx, type, cb){
   if(!ST.transfChecks[date]) ST.transfChecks[date] = {};
   const k = _chkKey(tcId,prodIdx,type);
@@ -6372,10 +6401,17 @@ function _transfTableHTML(rows, date, type){
   if(!rows.length){
     return '<div class="transf-empty">Nenhum item.</div>';
   }
+  const _allChkHdr=rows.every(r=>_getCheck(date,r.tcId,r.prodIdx,type));
+  const _someChkHdr=!_allChkHdr&&rows.some(r=>_getCheck(date,r.tcId,r.prodIdx,type));
+  const _hdrCbId='hdrCb_'+date+'_'+type;
   let html = '<table class="transf-table"><thead><tr>'
     + '<th>SKU</th><th>Produto</th><th>Qtd</th><th>Origem</th>'
-    + '<th>Destino Físico</th><th>NF Transferência</th><th>✓</th><th title="Reportar problema" style="color:#dc2626">⚠</th><th></th>'
+    + '<th>Destino Físico</th><th>NF Transferência</th>'
+    + '<th title="Marcar/desmarcar todos"><input type="checkbox" id="'+_hdrCbId+'"'+(_allChkHdr?' checked':'')+' style="cursor:pointer;accent-color:#7c3aed;width:16px;height:16px" onchange="marcarTodosTransf(\''+date+'\',\''+type+'\',this)"></th>'
+    + '<th title="Reportar problema" style="color:#dc2626">⚠</th><th></th>'
     + '</tr></thead><tbody>';
+  // fix indeterminate after render
+  setTimeout(()=>{const el=document.getElementById(_hdrCbId);if(el)el.indeterminate=_someChkHdr;},0);
   rows.forEach(r=>{
     const checked = _getCheck(date, r.tcId, r.prodIdx, type) ? ' checked' : '';
     const nf = r.destNota && r.destNota !== 'nao_possui' ? r.destNota : '<span style="color:#d1d5db">—</span>';
@@ -6394,7 +6430,7 @@ function _transfTableHTML(rows, date, type){
         style="border:none;background:${_rpt?'#fee2e2':'none'};color:${_rpt?'#dc2626':'#d1d5db'};cursor:pointer;font-size:13px;padding:2px 5px;border-radius:5px;line-height:1;font-weight:${_rpt?'700':'400'}"
         title="${_rpt?'Reportado: '+_rpt.obs:'Reportar problema'}">⚠</button>`;
     const rptNote = _rpt ? `<tr style="background:#fff7ed"><td colspan="9" style="padding:4px 8px 6px 24px;font-size:11px;color:#dc2626"><strong>⚠ Reportado (${_rpt.tab||''}${_rpt.at?' · '+_rpt.at:''}):</strong> ${esc(_rpt.obs)}</td></tr>` : '';
-    html += `<tr${rowStyle}>
+    html += `<tr${rowStyle} data-tcid="${r.tcId}" data-pidx="${r.prodIdx}">
       <td style="font-family:monospace;font-size:12px">${sku}</td>
       <td style="font-weight:500">${nomeCell}</td>
       <td style="text-align:center;font-weight:700">${r.qtd||1}</td>
