@@ -3495,7 +3495,23 @@ function iniciarTC(statusKey, tcId){
     const missing=prods.filter((_,i)=>!chks[i]).length;
     if(missing>0){toast('Confirme '+missing+' produto'+(missing!==1?'s':'')+' antes de iniciar','err');return;}
   }
-  setDriverStatus(statusKey,'a_caminho');
+  const veiculos=getVeiculos();
+  if(!veiculos.length){setDriverStatus(statusKey,'a_caminho');return;}
+  const vBtns=veiculos.map(v=>`<button onclick="selecionarVeicTC('${statusKey}','${tcId}','${v.id}')" style="display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:8px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font-size:0.9rem"><strong>${esc(v.modelo)}</strong> — ${esc(v.placa)}${v.estado?' ('+v.estado+')':''}</button>`).join('');
+  document.getElementById('mdfe-modal-title').textContent='🚗 Selecione o veículo';
+  document.getElementById('mdfe-modal-body').innerHTML='<p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px">Qual veículo será usado nesta transferência?</p>'+vBtns;
+  document.getElementById('mdfe-modal-confirm').style.display='none';
+  document.getElementById('mdfe-overlay').style.display='flex';
+}
+function selecionarVeicTC(statusKey, tcId, veicId){
+  closeMdfeModal();
+  const plan=curPlan();if(!plan)return;
+  if(!plan.driverStatus)plan.driverStatus={};
+  const selDrvId=document.getElementById('drv-select')?.value||'';
+  const prev=plan.driverStatus[statusKey];
+  const prevChks=typeof prev==='object'?(prev.prodChecks||null):null;
+  plan.driverStatus[statusKey]={status:'a_caminho',veicId,driverId:selDrvId,iniciadoEm:new Date().toISOString(),...(prevChks?{prodChecks:prevChks}:{})};
+  save();renderDriverView();
 }
 function finalizarTC(statusKey){
   const plan=curPlan();if(!plan)return;
