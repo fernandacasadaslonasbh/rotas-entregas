@@ -1124,6 +1124,14 @@ const FIREBASE_CONFIG={
 };
 let _fbDb=null,_fbSaving=false;
 function _applyState(s){
+  // Preservar driverStatus local antes de sobrescrever routePlans
+  // (evita que sync do Firebase apague atualizações feitas pelo motorista)
+  const _localDs={};
+  Object.keys(ST.routePlans||{}).forEach(date=>{
+    if(ST.routePlans[date]&&ST.routePlans[date].driverStatus){
+      _localDs[date]=ST.routePlans[date].driverStatus;
+    }
+  });
   ST.deliveries=Array.isArray(s.deliveries)?s.deliveries:[];
   ST.selectedDate=s.selectedDate||null;
   ST.finalizedDates=Array.isArray(s.finalizedDates)?s.finalizedDates:[];
@@ -1133,6 +1141,14 @@ function _applyState(s){
   if(s.routePlan&&s.routePlan.date&&s.routePlan.manha)ST.routePlans[s.routePlan.date]=s.routePlan;
   if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
   if(s.transfLocEdits&&typeof s.transfLocEdits==='object')ST.transfLocEdits=s.transfLocEdits;
+  // Restaurar driverStatus local por cima dos dados do servidor
+  Object.keys(_localDs).forEach(date=>{
+    if(!ST.routePlans[date])ST.routePlans[date]={};
+    ST.routePlans[date].driverStatus={
+      ...(ST.routePlans[date].driverStatus||{}),
+      ..._localDs[date]
+    };
+  });
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
 function initFirebase(){
