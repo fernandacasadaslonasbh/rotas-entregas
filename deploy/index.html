@@ -3392,6 +3392,7 @@ function renderDriverView(){
           <div style="font-size:0.75rem;font-weight:700;color:#15803d;margin-bottom:4px">📋 Produtos a coletar:</div>
           ${pickupItems.map(item=>`<div style="font-size:0.8rem;margin-bottom:4px"><span style="color:#374151;font-weight:600">${esc(item.cliente)}</span><br>${item.produtos.map(pp=>`<span style="color:#6b7280">${pp.sku?'<strong>'+esc(pp.sku)+'</strong> — ':''}`+esc(pp.nome)+` × ${pp.qtd}${pp.origem?' ('+esc(pp.origem)+')':''}</span>`).join('<br>')}</div>`).join('')}
         </div>`:'';
+        const justObs=!isPickup?(stop.just||''):'';
         html+=`<div class="drv-card drv-s-${status}">
           <div class="drv-card-topbar">
             <span class="drv-seq-badge">${seq++}</span>
@@ -3399,6 +3400,7 @@ function renderDriverView(){
             ${legDist||legDur?`<span class="drv-leg-info">${[legDist,legDur].filter(Boolean).join(' · ')}</span>`:''}
           </div>
           ${addr?`<div class="drv-info-grid"><div class="drv-info-row"><span class="drv-info-label">Endereço</span><span>${esc(addr)}${mapsLinkPickup?` <a href="${mapsLinkPickup}" target="_blank" style="color:#3b82f6;font-size:0.78rem">🗺 Maps</a>`:''}</span></div></div>`:''}
+          ${justObs?`<div class="drv-obs">📝 ${esc(justObs)}</div>`:''}
           ${pickupProdsHtml}
         </div>`;
         return;
