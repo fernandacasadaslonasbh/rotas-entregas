@@ -4914,12 +4914,13 @@ function openTcForm(){
   const _btnDel0=document.getElementById('tcBtnDel');if(_btnDel0)_btnDel0.style.display='none';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   sf('tcTitulo','');sf('tcData',ST.selectedDate||'');sf('tcObs','');sf('tcAntesEntrega','');sf('tcPontoDestino','');
+  const _tcHistWrapNew=document.getElementById('tcAutorHistWrap');if(_tcHistWrapNew)_tcHistWrapNew.style.display='none';
   const chk=document.getElementById('tcTagImportante');if(chk)chk.checked=false;
   resetTcTipo();onTcTipoChange();
   _tcFillClientesList();
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
-  sf('tcAutor','');
+  sf('tcAutor',localStorage.getItem('cdl_last_autor')||'');
   document.getElementById('tcOverlay').style.display='flex';
 }
 function closeTcForm(){
@@ -4948,7 +4949,20 @@ function openEditTcCard(id){
   document.getElementById('tcTitle').textContent='Editar Transferência / Coleta';
   const _btnDel1=document.getElementById('tcBtnDel');if(_btnDel1)_btnDel1.style.display='';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||'';};
-  sf('tcTitulo',tc.titulo||'');sf('tcData',tc.data);sf('tcObs',tc.obs||'');sf('tcAntesEntrega',tc.antesEntrega||'');sf('tcAutor','');
+  sf('tcTitulo',tc.titulo||'');sf('tcData',tc.data);sf('tcObs',tc.obs||'');sf('tcAntesEntrega',tc.antesEntrega||'');
+  // Pré-preencher nome com o último usado
+  const _lastAutor=localStorage.getItem('cdl_last_autor')||'';
+  sf('tcAutor',_lastAutor);
+  // Mostrar histórico
+  const _tcHistEl=document.getElementById('tcAutorHist');
+  const _tcHistWrap=document.getElementById('tcAutorHistWrap');
+  const _tcHistArr2=(tc.historico||[]);
+  if(_tcHistArr2.length&&_tcHistEl&&_tcHistWrap){
+    _tcHistEl.innerHTML=_tcHistArr2.map(h=>`<span style="display:block">${esc(h.tipo==='criação'?'✏ Criado':'🔄 Alterado')} por <strong>${esc(h.nome)}</strong> em ${esc(h.em)}</span>`).join('');
+    _tcHistEl.style.display='none';
+    const arr=document.getElementById('tcAutorHistArr');if(arr)arr.textContent='▼';
+    _tcHistWrap.style.display='';
+  }else if(_tcHistWrap){_tcHistWrap.style.display='none';}
   const chkE=document.getElementById('tcTagImportante');if(chkE)chkE.checked=!!tc.tagImportante;
   resetTcTipo();if(tc.tipoTransf)setTcTipo(tc.tipoTransf);onTcTipoChange();
   sf('tcPontoDestino',tc.pontoDestino||'');onTcDestinoChange();
@@ -5324,6 +5338,7 @@ function saveTcCard(){
   if(!titulo){toast('Informe o título do card','err');document.getElementById('tcTitulo').focus();return;}
   const autor=gf('tcAutor');
   if(!autor){toast('Informe seu nome','err');document.getElementById('tcAutor').focus();return;}
+  localStorage.setItem('cdl_last_autor',autor);
   if(!gf('tcData')){toast('Informe a data','err');return;}
   const tipoTransf=getTcTipo();
   if(!tipoTransf){toast('Selecione o tipo de transferência','err');return;}
@@ -7939,6 +7954,10 @@ function addTcToRoute(tcId, routeType, per){
       <div class="fg">
         <label>👤 Seu nome <span style="color:#ef4444;font-size:0.72rem">*obrigatório</span></label>
         <input type="text" id="tcAutor" placeholder="Nome de quem está registrando...">
+        <div id="tcAutorHistWrap" style="display:none;margin-top:4px">
+          <button type="button" onclick="(function(){const el=document.getElementById('tcAutorHist');const arr=document.getElementById('tcAutorHistArr');if(el.style.display==='none'){el.style.display='';arr.textContent='▲';}else{el.style.display='none';arr.textContent='▼';}})()" style="background:none;border:none;font-size:0.72rem;color:#9ca3af;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px">📋 Histórico de alterações <span id="tcAutorHistArr">▼</span></button>
+          <div id="tcAutorHist" style="display:none;margin-top:4px;font-size:0.72rem;color:#6b7280;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;max-height:90px;overflow-y:auto"></div>
+        </div>
       </div>
     </div><!-- fim .mbody -->
     <div class="mfooter">
