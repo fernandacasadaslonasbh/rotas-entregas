@@ -1113,15 +1113,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 
 <script>
 // ── Firebase ──────────────────────────────────────────────────────────────────
-const FIREBASE_CONFIG={
-  apiKey:"AIzaSyBNt3zwhztmTVceuxph7zdg5HUvCPWaT8g",
-  authDomain:"casa-das-lonas-rotas.firebaseapp.com",
-  databaseURL:"https://casa-das-lonas-rotas-default-rtdb.firebaseio.com",
-  projectId:"casa-das-lonas-rotas",
-  storageBucket:"casa-das-lonas-rotas.firebasestorage.app",
-  messagingSenderId:"369644629225",
-  appId:"1:369644629225:web:120978c64bf8447469d478"
-};
+let FIREBASE_CONFIG=null; // carregado via /api/config
 let _fbDb=null,_fbSaving=false;
 function _applyState(s){
   // Preservar driverStatus local antes de sobrescrever routePlans
@@ -1258,7 +1250,8 @@ function toggleSidebar(){
 const _origSwitchTab=typeof switchTab!=='undefined'?switchTab:null;
 
 const FATOR_TRANSITO=1.4; // Usado apenas como fallback quando sem chave Google
-const GOOGLE_MAPS_API_KEY='AIzaSyBOBHDMef8kte3INYL-Bm6_rhe-eW-4_gI'; // ← Cole sua chave Google Maps aqui
+let _mapsEnabled=false; // Maps disponível se /api/config retornar mapsEnabled:true
+const GOOGLE_MAPS_API_KEY=''; // chave removida do frontend — proxy via /api/maps
 const BASES={
   CD:    {label:'CD Galpão (Contagem)',  addr:'Rua Monsenhor João Rodrigues 425, Industrial, Contagem, MG'},
   Matriz:{label:'Matriz – Prado (BH)',   addr:'Rua Viamaõ 262, Prado, Belo Horizonte, MG'},
@@ -2091,7 +2084,7 @@ function reRenderPanels(){
 // ── Geocoding & Route ──────────────────────────────────────────────────────
 // ── Geocoding ─────────────────────────────────────────────────────────────
 async function geocodeGoogle(addr){
-  const url=`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr+', Minas Gerais, Brasil')}&key=${GOOGLE_MAPS_API_KEY}`;
+  const url=`/api/maps?type=geocode&address=${encodeURIComponent(addr+', Minas Gerais, Brasil')}`;
   try{const r=await fetch(url);const d=await r.json();if(d.status==='OK'&&d.results[0]){const l=d.results[0].geometry.location;return{lat:l.lat,lng:l.lng};}}catch(e){}
   return null;
 }
@@ -2100,19 +2093,19 @@ async function geocodeNominatim(addr){
   for(let t=0;t<3;t++){try{await sleep(1200);const r=await fetch(url,{headers:{'User-Agent':'CasaDasLonasRoutes/1.0'}});const d=await r.json();if(d&&d[0])return{lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)};}catch(e){}await sleep(1200);}
   return null;
 }
-async function geocode(addr){return GOOGLE_MAPS_API_KEY?geocodeGoogle(addr):geocodeNominatim(addr);}
+async function geocode(addr){return _mapsEnabled?geocodeGoogle(addr):geocodeNominatim(addr);}
 async function ensureBase(k){const c=getBC();if(c[k]&&c[k].lat)return c[k];const co=await geocode(BASES[k].addr);if(co){c[k]=co;saveBC(c);}return co;}
 
 // ── Routing ────────────────────────────────────────────────────────────────
 // ── Google Directions REST (sem SDK, com timeout e fallback) ──────────────
 async function googleRoute(pts,optimize=false){
-  if(!GOOGLE_MAPS_API_KEY||pts.length<2)return null;
+  if(!_mapsEnabled||pts.length<2)return null;
   const origin=pts[0].lat+','+pts[0].lng;
   const dest=pts[pts.length-1].lat+','+pts[pts.length-1].lng;
   const mid=pts.slice(1,-1);
   let wpStr=mid.map(p=>p.lat+','+p.lng).join('|');
   if(optimize&&wpStr)wpStr='optimize:true|'+wpStr;
-  let url=`https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}&key=${GOOGLE_MAPS_API_KEY}&region=br&language=pt-BR`;
+  let url=`/api/maps?type=directions&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}`;
   if(wpStr)url+='&waypoints='+encodeURIComponent(wpStr);
   try{
     const ctrl=new AbortController();
@@ -4830,7 +4823,16 @@ async function inserirColetasERota(){
 // Init
 initCustomBases();
 load();
-initFirebase();
+// Buscar config segura do servidor antes de inicializar Firebase e Maps
+(async()=>{
+  try{
+    const r=await fetch('/api/config');
+    const cfg=await r.json();
+    if(cfg.firebase&&cfg.firebase.apiKey){FIREBASE_CONFIG=cfg.firebase;}
+    _mapsEnabled=!!cfg.mapsEnabled;
+  }catch(e){console.warn('Falha ao carregar /api/config:',e);}
+  initFirebase();
+})();
 renderSidebar();
 renderContent();
 document.getElementById('nomeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNome();});
