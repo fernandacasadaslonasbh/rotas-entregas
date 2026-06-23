@@ -3513,8 +3513,10 @@ function iniciarTC(statusKey, tcId){
     const plan=curPlan();
     const ds=plan?.driverStatus?.[statusKey];
     const chks=(typeof ds==='object'&&ds.prodChecks)||{};
-    const missing=prods.filter((_,i)=>!chks[i]).length;
-    if(missing>0){toast('Confirme '+missing+' produto'+(missing!==1?'s':'')+' antes de iniciar','err');return;}
+    // Só exige check dos itens de LEVAR (origem = pontoSaida ou destFisico = pontoDestino)
+    const levarIdxs=prods.map((pr,i)=>i).filter(i=>{const pr=prods[i];return pr.origem===tc.pontoSaida||pr.destFisico===tc.pontoDestino;});
+    const missing=levarIdxs.filter(i=>!chks[i]).length;
+    if(missing>0){toast('Confirme '+missing+' item'+(missing!==1?'s':'')+' de levar antes de iniciar','err');return;}
   }
   const veiculos=getVeiculos();
   if(!veiculos.length){setDriverStatus(statusKey,'a_caminho');return;}
@@ -3539,6 +3541,20 @@ function selecionarVeicTC(statusKey, tcId, veicId){
 function finalizarTC(statusKey){
   const plan=curPlan();if(!plan)return;
   if(!plan.driverStatus)plan.driverStatus={};
+  // Validar itens de RECOLHER antes de finalizar
+  const _stKey=statusKey.split('__');
+  const tcId=_stKey[_stKey.length-1];
+  const tc=(ST.transfers||[]).find(x=>x.id===tcId);
+  if(tc){
+    const prods=tc.produtos||[];
+    const recolherIdxs=prods.map((pr,i)=>i).filter(i=>prods[i].origem===tc.pontoDestino);
+    if(recolherIdxs.length){
+      const cur2=plan.driverStatus[statusKey];
+      const chks2=(typeof cur2==='object'&&cur2.prodChecks)||{};
+      const missing2=recolherIdxs.filter(i=>!chks2[i]).length;
+      if(missing2>0){toast('Confirme '+missing2+' item'+(missing2!==1?'s':'')+' de recolher antes de finalizar','err');return;}
+    }
+  }
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?{...cur}:{};
   plan.driverStatus[statusKey]={...prev,status:'entregue',finalizadoEm:new Date().toISOString()};
