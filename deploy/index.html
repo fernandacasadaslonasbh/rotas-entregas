@@ -3479,7 +3479,7 @@ function renderDriverView(){
           ?'<button class="drv-start-btn" style="background:#7c3aed;margin-top:12px" data-sk="'+statusKey+'" data-tc="'+tc.id+'" onclick="iniciarTC(this.dataset.sk,this.dataset.tc)">🚛 Iniciar Transferência</button>'
           :(status==='a_caminho')
             ?'<div class="drv-iniciada-ok" style="color:#7c3aed;margin-top:10px">🚛 Transferência em andamento</div>'
-              +'<button class="drv-finalize-btn" data-sk="'+statusKey+'" onclick="finalizarTC(this.dataset.sk)">✅ Finalizar Transferência</button>'
+              +'<button class="drv-finalize-btn" data-sk="'+statusKey+'" data-tc="'+tc.id+'" onclick="mostrarFinalizacaoTC(this.dataset.sk,this.dataset.tc)">✅ Finalizar Transferência</button>'
           :(status==='entregue')
             ?'<div class="drv-recebido-badge" style="margin-top:8px">✅ Transferência concluída</div>'
           :'';
@@ -3538,26 +3538,74 @@ function selecionarVeicTC(statusKey, tcId, veicId){
   if(veic){const tc=(ST.transfers||[]).find(x=>x.id===tcId);if(tc){_setVeicObs(tc,veic,'obs');}}
   save();renderDriverView();
 }
-function finalizarTC(statusKey){
+function mostrarFinalizacaoTC(statusKey, tcId){
+  const tc=(ST.transfers||[]).find(x=>x.id===tcId);
+  const prods=(tc?.produtos)||[];
+  const recolher=prods.filter(pr=>pr.origem===tc.pontoDestino);
+  // Validar checks de recolher
+  const plan=curPlan();if(!plan)return;
+  const ds=plan.driverStatus&&plan.driverStatus[statusKey];
+  const chks=(typeof ds==='object'&&ds.prodChecks)||{};
+  const recolherIdxs=recolher.map(pr=>prods.indexOf(pr));
+  const missing=recolherIdxs.filter(i=>!chks[i]).length;
+  if(missing>0){toast('Confirme '+missing+' item'+(missing!==1?'s':'')+' de recolher antes de finalizar','err');return;}
+  const card=document.querySelector('[data-sk="'+statusKey+'"]');
+  if(!card)return;
+  const finBtn=card.querySelector('.drv-finalize-btn');
+  if(finBtn)finBtn.style.display='none';
+  const wrap=document.createElement('div');
+  wrap.id='fin-tc-form-'+statusKey;
+  wrap.style.cssText='margin-top:10px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px';
+  // Se há itens a recolher, mostrar campos de qty coletada
+  let itemsHtml='';
+  if(recolher.length){
+    itemsHtml='<div style="font-size:0.8rem;font-weight:700;color:#15803d;margin-bottom:8px">📥 Confirme as quantidades coletadas:</div>';
+    recolher.forEach((pr,ri)=>{
+      const lbl=(pr.sku?pr.sku+' — ':'')+pr.nome;
+      itemsHtml+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">'
+        +'<span style="flex:1;font-size:0.82rem;color:#1e293b">'+esc(lbl)+'</span>'
+        +'<span style="font-size:0.75rem;color:#6b7280;white-space:nowrap">Esperado: '+pr.qtd+'</span>'
+        +'<input type="number" id="col_'+statusKey+'_'+ri+'" placeholder="Qtd" value="'+pr.qtd+'" min="0"'
+        +' style="width:70px;border:1.5px solid #86efac;border-radius:6px;padding:5px 8px;font-size:0.85rem;text-align:center">'
+        +'</div>';
+    });
+  } else {
+    itemsHtml='<div style="font-size:0.82rem;color:#6b7280;margin-bottom:8px">Nenhum item a recolher.</div>';
+  }
+  wrap.innerHTML=itemsHtml
+    +'<div style="display:flex;gap:8px;margin-top:8px">'
+    +'<button style="flex:2;padding:11px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer" onclick="confirmarFinalizarTC(\''+statusKey+'\',\''+tcId+'\')">✅ Confirmar coleta</button>'
+    +'<button onclick="renderDriverView()" style="flex:1;padding:10px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:0.88rem;cursor:pointer">Cancelar</button>'
+    +'</div>';
+  if(finBtn) finBtn.parentNode.insertBefore(wrap, finBtn.nextSibling);
+  else card.appendChild(wrap);
+}
+function confirmarFinalizarTC(statusKey, tcId){
+  const tc=(ST.transfers||[]).find(x=>x.id===tcId);
+  const prods=(tc?.produtos)||[];
+  const recolher=prods.filter(pr=>pr.origem===tc.pontoDestino);
+  // Coletar qtds preenchidas
+  const coletado=[];
+  let invalido=false;
+  recolher.forEach((pr,ri)=>{
+    const inp=document.getElementById('col_'+statusKey+'_'+ri);
+    const v=inp?(inp.value+'').trim():'';
+    if(v===''||isNaN(+v)){
+      if(inp)inp.style.borderColor='#ef4444';
+      invalido=true;
+    } else {
+      coletado.push({sku:pr.sku||'',nome:pr.nome||'',qtdEsperada:pr.qtd,qtdColetada:+v});
+    }
+  });
+  if(invalido){toast('Preencha as quantidades coletadas','err');return;}
+  finalizarTC(statusKey, coletado);
+}
+function finalizarTC(statusKey, coletado){
   const plan=curPlan();if(!plan)return;
   if(!plan.driverStatus)plan.driverStatus={};
-  // Validar itens de RECOLHER antes de finalizar
-  const _stKey=statusKey.split('__');
-  const tcId=_stKey[_stKey.length-1];
-  const tc=(ST.transfers||[]).find(x=>x.id===tcId);
-  if(tc){
-    const prods=tc.produtos||[];
-    const recolherIdxs=prods.map((pr,i)=>i).filter(i=>prods[i].origem===tc.pontoDestino);
-    if(recolherIdxs.length){
-      const cur2=plan.driverStatus[statusKey];
-      const chks2=(typeof cur2==='object'&&cur2.prodChecks)||{};
-      const missing2=recolherIdxs.filter(i=>!chks2[i]).length;
-      if(missing2>0){toast('Confirme '+missing2+' item'+(missing2!==1?'s':'')+' de recolher antes de finalizar','err');return;}
-    }
-  }
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?{...cur}:{};
-  plan.driverStatus[statusKey]={...prev,status:'entregue',finalizadoEm:new Date().toISOString()};
+  plan.driverStatus[statusKey]={...prev,status:'entregue',finalizadoEm:new Date().toISOString(),...(coletado&&coletado.length?{coletado}:{})};
   save();renderDriverView();
   toast('Transferência finalizada!','ok');
 }
