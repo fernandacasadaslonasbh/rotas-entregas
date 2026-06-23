@@ -6708,10 +6708,12 @@ function _renderTransfLoc(el, loc){
 
   const menuBtn=(type)=>''; // removido temporariamente
 
-  const printBtn=(type,label)=>`<button type="button"
-    onclick="imprimirSecao('${date}','${loc}','${type}')"
-    style="border:none;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer;font-size:11px;font-weight:600;color:#475569;padding:3px 9px;border-radius:6px;line-height:1.4"
-    title="Imprimir lista para conferência">🖨 Imprimir</button>`;
+  const printBtn=(type,label)=>`<div style="position:relative;display:inline-block">
+    <button type="button"
+      onclick="togglePrintMenu('${date}','${loc}','${type}',this)"
+      style="border:none;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer;font-size:11px;font-weight:600;color:#475569;padding:3px 9px;border-radius:6px;line-height:1.4"
+      title="Imprimir lista para conferência">🖨 Imprimir ▾</button>
+  </div>`;
 
   const sepPend=sepRows.filter(r=>!_getCheck(date,r.tcId,r.prodIdx,'sep')).length;
   const recPend=recRows.filter(r=>!_getCheck(date,r.tcId,r.prodIdx,'rec')).length;
@@ -7481,8 +7483,24 @@ function downloadTransfResumoExcel(date){
 }
 
 // ── Imprimir lista de Separação ou Recebimento ────────────────────────────────
-function imprimirSecao(date, loc, type){
-  const rows = _getSectionRows(date, loc, type);
+function togglePrintMenu(date, loc, type, btn){
+  // Fechar qualquer menu aberto
+  document.querySelectorAll('.print-menu-dropdown').forEach(m=>m.remove());
+  const menu=document.createElement('div');
+  menu.className='print-menu-dropdown';
+  menu.style.cssText='position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:200;min-width:200px;overflow:hidden';
+  menu.innerHTML=`<button onclick="document.querySelectorAll('.print-menu-dropdown').forEach(m=>m.remove());imprimirSecao('${date}','${loc}','${type}',false)"
+      style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:#1e293b;border-bottom:1px solid #f1f5f9">
+      🖨 Imprimir tudo</button>
+    <button onclick="document.querySelectorAll('.print-menu-dropdown').forEach(m=>m.remove());imprimirSecao('${date}','${loc}','${type}',true)"
+      style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:#7c3aed">
+      📋 Imprimir não conferidos</button>`;
+  btn.parentNode.appendChild(menu);
+  setTimeout(()=>document.addEventListener('click',function h(e){if(!menu.contains(e.target)&&e.target!==btn){menu.remove();document.removeEventListener('click',h);}},{once:true}),10);
+}
+function imprimirSecao(date, loc, type, apenasNaoConferidos){
+  let rows = _getSectionRows(date, loc, type);
+  if(apenasNaoConferidos) rows=rows.filter(r=>!_getCheck(date,r.tcId,r.prodIdx,type));
   const locLabel = _locLabel(loc);
   const typeLabel = type === 'sep' ? 'SEPARAÇÃO' : 'RECEBIMENTO';
   const dateLabel = _fmt_date(date);
@@ -7503,8 +7521,9 @@ function imprimirSecao(date, loc, type){
     </tr>`;
   }).join('');
 
+  const filtroLabel=apenasNaoConferidos?' (não conferidos)':'';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>${typeLabel} — ${locLabel} — ${dateLabel}</title>
+  <title>${typeLabel} — ${locLabel} — ${dateLabel}${filtroLabel}</title>
   <style>
     body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#111}
     h1{font-size:16px;margin:0 0 4px}
@@ -7518,7 +7537,7 @@ function imprimirSecao(date, loc, type){
   </head><body>
   <button onclick="window.print()" style="margin-bottom:12px;padding:6px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🖨 Imprimir</button>
   <h1>📋 ${typeLabel} — ${locLabel}</h1>
-  <div class="sub">${dateLabel} &nbsp;|&nbsp; ${rows.length} item(s)</div>
+  <div class="sub">${dateLabel} &nbsp;|&nbsp; ${rows.length} item(s)${filtroLabel?'<span style="margin-left:8px;background:#ede9fe;color:#7c3aed;padding:1px 8px;border-radius:10px;font-size:11px">Apenas não conferidos</span>':''}</div>
   <table>
     <thead><tr>
       <th style="text-align:center">#</th>
