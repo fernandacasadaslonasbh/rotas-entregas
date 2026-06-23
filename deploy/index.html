@@ -1113,7 +1113,16 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 
 <script>
 // ── Firebase ──────────────────────────────────────────────────────────────────
-let FIREBASE_CONFIG=null; // carregado via /api/config
+// Firebase config — seguro para ficar no frontend (segurança vem das Firebase Rules)
+let FIREBASE_CONFIG={
+  apiKey:"AIzaSyBNt3zwhztmTVceuxph7zdg5HUvCPWaT8g",
+  authDomain:"casa-das-lonas-rotas.firebaseapp.com",
+  databaseURL:"https://casa-das-lonas-rotas-default-rtdb.firebaseio.com",
+  projectId:"casa-das-lonas-rotas",
+  storageBucket:"casa-das-lonas-rotas.firebasestorage.app",
+  messagingSenderId:"369644629225",
+  appId:"1:369644629225:web:120978c64bf8447469d478"
+};
 let _fbDb=null,_fbSaving=false;
 function _applyState(s){
   // Preservar driverStatus local antes de sobrescrever routePlans
@@ -4823,16 +4832,9 @@ async function inserirColetasERota(){
 // Init
 initCustomBases();
 load();
-// Buscar config segura do servidor antes de inicializar Firebase e Maps
-(async()=>{
-  try{
-    const r=await fetch('/api/config');
-    const cfg=await r.json();
-    if(cfg.firebase&&cfg.firebase.apiKey){FIREBASE_CONFIG=cfg.firebase;}
-    _mapsEnabled=!!cfg.mapsEnabled;
-  }catch(e){console.warn('Falha ao carregar /api/config:',e);}
-  initFirebase();
-})();
+// Verificar se Maps está disponível via /api/maps, iniciar Firebase imediatamente
+initFirebase();
+fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled)_mapsEnabled=true;}).catch(()=>{});
 renderSidebar();
 renderContent();
 document.getElementById('nomeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNome();});
