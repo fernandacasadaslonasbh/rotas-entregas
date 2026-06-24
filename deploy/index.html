@@ -1218,14 +1218,10 @@ function initFirebase(){
           const srv=serverDs[sk];
           const loc=localDs[sk];
           if(!loc){merged[sk]=srv;changed=true;return;}
-          const srvRank=_DS_RANK_L[srv?.status]??-1;
-          const locRank=_DS_RANK_L[loc?.status]??-1;
-          if(srvRank>locRank){merged[sk]=srv;changed=true;}
-          else if(srvRank===locRank){
-            const srvTs=srv?.finalizadoEm||srv?.iniciadoEm||'';
-            const locTs=loc?.finalizadoEm||loc?.iniciadoEm||'';
-            if(srvTs>locTs){merged[sk]=srv;changed=true;}
-          }
+          // _savedAt é o timestamp do último save — sempre vence o mais recente
+          const srvTs=srv?._savedAt||srv?.finalizadoEm||srv?.iniciadoEm||'';
+          const locTs=loc?._savedAt||loc?.finalizadoEm||loc?.iniciadoEm||'';
+          if(srvTs>locTs){merged[sk]=srv;changed=true;}
         });
         ST.routePlans[date].driverStatus=merged;
       });
@@ -1369,12 +1365,17 @@ function save(){
   if(_fbDb){
     _fbSaving=true;
     _fbDb.ref('cdl_state').set(ST).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
-    // Grava driverStatus no caminho dedicado — listener independente do _fbSaving
-    const _ds={};
+    // Grava driverStatus no caminho dedicado — com _savedAt para resolver conflitos por timestamp
+    const _dsTs={};const _now=new Date().toISOString();
     Object.keys(ST.routePlans||{}).forEach(date=>{
-      if(ST.routePlans[date]?.driverStatus)_ds[date]=ST.routePlans[date].driverStatus;
+      const ds=ST.routePlans[date]?.driverStatus;
+      if(!ds)return;
+      _dsTs[date]={};
+      Object.keys(ds).forEach(sk=>{
+        _dsTs[date][sk]={...ds[sk],_savedAt:_now};
+      });
     });
-    if(Object.keys(_ds).length)_fbDb.ref('cdl_driverStatus').update(_ds).catch(e=>console.warn('driverStatus sync:',e));
+    if(Object.keys(_dsTs).length)_fbDb.ref('cdl_driverStatus').update(_dsTs).catch(e=>console.warn('driverStatus sync:',e));
   }
 }
 function load(){
