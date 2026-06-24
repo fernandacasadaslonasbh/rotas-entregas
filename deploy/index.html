@@ -1189,6 +1189,22 @@ function initFirebase(){
       if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
       if(cfg.mdfeWpp)localStorage.setItem('cdl_mdfe_whatsapp',cfg.mdfeWpp);
     }).catch(e=>console.warn('Firebase config load:',e));
+    // Escutar sincronizações em tempo real — quando alguém rodar o sync, todos os dispositivos atualizam o catálogo
+    let _syncListenerReady=false;
+    _fbDb.ref('cdl_config/ultima_sincronizacao').on('value',(snap)=>{
+      if(!_syncListenerReady){_syncListenerReady=true;return;} // ignora disparo inicial
+      if(!snap.exists())return;
+      _fbDb.ref('cdl_config').once('value').then(cfgSnap=>{
+        if(!cfgSnap.exists())return;
+        const cfg=cfgSnap.val();
+        if(cfg.catalogo)localStorage.setItem('cdl_catalogo',JSON.stringify(cfg.catalogo));
+        if(cfg.catalogo_kits)localStorage.setItem('cdl_kits',JSON.stringify(cfg.catalogo_kits));
+        if(cfg.catalogo_cmc)localStorage.setItem('cdl_cmc',JSON.stringify(cfg.catalogo_cmc));
+        if(cfg.catalogo_icms)localStorage.setItem('cdl_icms',JSON.stringify(cfg.catalogo_icms));
+        if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
+        toast('Catálogo atualizado automaticamente 🔄','ok');
+      }).catch(e=>console.warn('Reload catálogo:',e));
+    });
     // First load from Firebase
     _fbDb.ref('cdl_state').once('value').then(snap=>{
       if(!snap.exists()){
