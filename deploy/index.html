@@ -899,6 +899,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
           <div style="position:relative">
             <input type="text" id="fProdSku" placeholder="🔍 SKU ou nome do produto..." style="width:100%" oninput="searchProduto()" onblur="hideProdutoDropdown()" autocomplete="off">
             <input type="text" id="fProdNome" placeholder="Nome aparece após selecionar" readonly style="width:100%;margin-top:4px;background:#f9fafb;font-size:0.8rem;border-radius:6px;padding:5px 8px;border:1px solid #e5e7eb;color:#374151" onclick="document.getElementById('fProdSku').focus()">
+            <input type="text" id="fProdOutroDesc" placeholder="Digite a descrição do produto..." style="display:none;width:100%;margin-top:4px;padding:5px 8px;border:1.5px solid #7c3aed;border-radius:6px;font-size:0.8rem;box-sizing:border-box;background:#faf5ff">
           </div>
           <input type="number" id="fProdQtd" placeholder="Qtd" min="1" style="width:60px">
           <select id="fProdOrigem" style="padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:0.83rem">
@@ -4639,23 +4640,50 @@ function searchProduto(){
   const q=skuEl.value.trim().toLowerCase();
   if(nomeEl)nomeEl.value='';
   skuEl.className=skuEl.className.replace(/sku-found|sku-notfound/g,'');
+  _hideCardOutroDesc();
   if(q.length<1){dd.style.display='none';return;}
   _prodResults=_catSearch(q);
-  if(!_prodResults.length){dd.style.display='none';skuEl.classList.add('sku-notfound');return;}
   _posDd(dd,skuEl);
-  dd.innerHTML=_prodResults.map((r,i)=>
-    `<div class="prod-dd-item" onmousedown="selectProdutoCard(${i})"><span class="prod-dd-sku">${r.sku.toUpperCase()}</span><span class="prod-dd-nome">${r.nome}</span></div>`
-  ).join('');
+  let ddHtml='';
+  if(_prodResults.length){
+    ddHtml=_prodResults.map((r,i)=>
+      `<div class="prod-dd-item" onmousedown="selectProdutoCard(${i})"><span class="prod-dd-sku">${r.sku.toUpperCase()}</span><span class="prod-dd-nome">${r.nome}</span></div>`
+    ).join('');
+  } else {
+    skuEl.classList.add('sku-notfound');
+  }
+  ddHtml+=`<div class="prod-dd-item" onmousedown="selectCardOutro()" style="border-top:1px solid #e5e7eb;color:#7c3aed;font-style:italic"><span class="prod-dd-sku" style="color:#7c3aed">OUTRO</span><span class="prod-dd-nome">Produto não cadastrado — digitar descrição</span></div>`;
+  dd.innerHTML=ddHtml;
   dd.style.display='block';
+}
+function selectCardOutro(){
+  const skuEl=document.getElementById('fProdSku');
+  const nomeEl=document.getElementById('fProdNome');
+  const dd=_mkDd('fProdDropdown');
+  if(skuEl){skuEl.value='OUTRO';skuEl.className=skuEl.className.replace(/sku-found|sku-notfound/g,'');skuEl.style.borderColor='#7c3aed';}
+  if(nomeEl){nomeEl.value='';}
+  dd.style.display='none';
+  _showCardOutroDesc();
+}
+function _showCardOutroDesc(){
+  const el=document.getElementById('fProdOutroDesc');
+  if(el){el.style.display='block';el.focus();}
+}
+function _hideCardOutroDesc(){
+  const el=document.getElementById('fProdOutroDesc');
+  if(el){el.style.display='none';el.value='';}
+  const skuEl=document.getElementById('fProdSku');
+  if(skuEl)skuEl.style.borderColor='';
 }
 function selectProdutoCard(idx){
   const r=_prodResults[idx];if(!r)return;
   const skuEl=document.getElementById('fProdSku');
   const nomeEl=document.getElementById('fProdNome');
   const dd=_mkDd('fProdDropdown');
-  if(skuEl){skuEl.value=r.sku.toUpperCase();skuEl.classList.remove('sku-notfound');skuEl.classList.add('sku-found');}
+  if(skuEl){skuEl.value=r.sku.toUpperCase();skuEl.classList.remove('sku-notfound');skuEl.classList.add('sku-found');skuEl.style.borderColor='';}
   if(nomeEl){nomeEl.value=r.nome;nomeEl.style.color='#15803d';}
   dd.style.display='none';
+  _hideCardOutroDesc();
   document.getElementById('fProdQtd')?.focus();
 }
 function hideProdutoDropdown(){setTimeout(()=>{const d=_mkDd('fProdDropdown');d.style.display='none';},150);}
@@ -4666,10 +4694,16 @@ function initCardProdutos(existing){
   renderCardProdutos();
 }
 function addProdutoCard(){
-  const sku=(document.getElementById('fProdSku')?.value||'').trim();
-  const nome=(document.getElementById('fProdNome')?.value||'').trim();
+  const skuRaw=(document.getElementById('fProdSku')?.value||'').trim();
+  let nome=(document.getElementById('fProdNome')?.value||'').trim();
   const qtd=parseInt(document.getElementById('fProdQtd')?.value||'1')||1;
   const origem=(document.getElementById('fProdOrigem')?.value||'');
+  // Caso "Outro": usa descrição livre
+  if(skuRaw==='OUTRO'){
+    nome=(document.getElementById('fProdOutroDesc')?.value||'').trim();
+    if(!nome){toast('Digite a descrição do produto','err');document.getElementById('fProdOutroDesc')?.focus();return;}
+  }
+  const sku=skuRaw==='OUTRO'?'':skuRaw;
   if(!sku&&!nome){toast('Informe o SKU ou nome do produto','err');return;}
   _cardProdutos.push({sku,nome:nome||sku,qtd,origem});
   document.getElementById('fProdSku').value='';
@@ -4677,7 +4711,8 @@ function addProdutoCard(){
   document.getElementById('fProdQtd').value='';
   document.getElementById('fProdOrigem').value='';
   const skuEl=document.getElementById('fProdSku');
-  if(skuEl)skuEl.className=skuEl.className.replace(/sku-found|sku-notfound/g,'');
+  if(skuEl){skuEl.className=skuEl.className.replace(/sku-found|sku-notfound/g,'');skuEl.style.borderColor='';}
+  _hideCardOutroDesc();
   renderCardProdutos();
 }
 function removeProdutoCard(idx){
