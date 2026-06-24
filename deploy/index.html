@@ -1145,13 +1145,29 @@ function _applyState(s){
   if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
   if(s.transfLocEdits&&typeof s.transfLocEdits==='object')ST.transfLocEdits=s.transfLocEdits;
 
-  // Restaurar driverStatus local por cima dos dados do servidor
+  // Mesclar driverStatus: usa progressão de status + timestamp para decidir qual é mais recente
+  // (evita que save do admin sobrescreva atualização do motorista, e vice-versa)
+  const _DS_RANK={pendente:0,a_caminho:1,entregue:2};
   Object.keys(_localDs).forEach(date=>{
     if(!ST.routePlans[date])ST.routePlans[date]={};
-    ST.routePlans[date].driverStatus={
-      ...(ST.routePlans[date].driverStatus||{}),
-      ..._localDs[date]
-    };
+    const serverDs=ST.routePlans[date].driverStatus||{};
+    const merged={...serverDs};
+    Object.keys(_localDs[date]).forEach(sk=>{
+      const loc=_localDs[date][sk];
+      const srv=serverDs[sk];
+      if(!srv){merged[sk]=loc;return;}
+      const locRank=_DS_RANK[loc?.status]??-1;
+      const srvRank=_DS_RANK[srv?.status]??-1;
+      if(locRank>srvRank){merged[sk]=loc;}
+      else if(srvRank>locRank){merged[sk]=srv;}
+      else{
+        // mesmo status — usa timestamp para pegar o mais recente
+        const locTs=loc?.finalizadoEm||loc?.iniciadoEm||'';
+        const srvTs=srv?.finalizadoEm||srv?.iniciadoEm||'';
+        merged[sk]=locTs>=srvTs?loc:srv;
+      }
+    });
+    ST.routePlans[date].driverStatus=merged;
   });
   // Restaurar finalizedDates locais (união: datas finalizadas localmente nunca são perdidas)
   _localFinal.forEach(d=>{if(!ST.finalizedDates.includes(d))ST.finalizedDates.push(d);});
