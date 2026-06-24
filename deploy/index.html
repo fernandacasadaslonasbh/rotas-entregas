@@ -1364,7 +1364,17 @@ function save(){
   try{localStorage.setItem(SKEY,JSON.stringify(ST))}catch(e){}
   if(_fbDb){
     _fbSaving=true;
-    _fbDb.ref('cdl_state').set(ST).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
+    // update() em vez de set() — preserva cdl_state/files/ que o set() apagaria
+    const _upd={
+      deliveries:ST.deliveries||[],
+      selectedDate:ST.selectedDate||null,
+      finalizedDates:ST.finalizedDates||[],
+      routePlans:ST.routePlans||{},
+      transfers:ST.transfers||[],
+      transfChecks:ST.transfChecks||{},
+      transfLocEdits:ST.transfLocEdits||{}
+    };
+    _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
     // Grava driverStatus no caminho dedicado — com _savedAt para resolver conflitos por timestamp
     const _dsTs={};const _now=new Date().toISOString();
     Object.keys(ST.routePlans||{}).forEach(date=>{
@@ -2705,13 +2715,15 @@ function _setFiles(type,arr){
   const key=type==='nf'?nfKey(editId):blKey(editId);
   // Salva no localStorage (cache local)
   try{localStorage.setItem(key,JSON.stringify(arr));}catch(e){console.warn('localStorage cheio:',e);}
-  // Salva no Firebase (fonte de verdade compartilhada entre dispositivos)
+  // Salva no Firebase dentro de cdl_state/files/ (mesmas regras do cdl_state)
   if(_fbDb&&editId){
-    const fbKey='cdl_files/'+editId+'/'+type;
+    const fbRef=_fbDb.ref('cdl_state/files/'+editId+'/'+type);
     if(arr.length){
-      _fbDb.ref(fbKey).set(arr).catch(e=>console.warn('Firebase file save:',e));
+      fbRef.set(arr)
+        .then(()=>console.log('Arquivo salvo no Firebase:',type,editId))
+        .catch(e=>{toast('Erro ao salvar arquivo na nuvem: '+e.message,'err');console.warn('Firebase file save:',e);});
     } else {
-      _fbDb.ref(fbKey).remove().catch(e=>console.warn('Firebase file remove:',e));
+      fbRef.remove().catch(e=>console.warn('Firebase file remove:',e));
     }
   }
   return true;
@@ -2766,10 +2778,10 @@ function loadFileUI(){
   // Primeiro mostra o que tem no localStorage (instantâneo)
   ['nf','boleto'].forEach(type=>updateFileUI(type));
   ['fNf','fBoleto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  // Depois busca do Firebase (sincroniza com outros dispositivos)
+  // Busca do Firebase cdl_state/files/ para sincronizar com outros dispositivos
   if(_fbDb&&editId){
     ['nf','boleto'].forEach(type=>{
-      _fbDb.ref('cdl_files/'+editId+'/'+type).once('value').then(snap=>{
+      _fbDb.ref('cdl_state/files/'+editId+'/'+type).once('value').then(snap=>{
         if(!snap.exists())return;
         const fbFiles=snap.val();
         if(!Array.isArray(fbFiles)||!fbFiles.length)return;
@@ -2778,7 +2790,7 @@ function loadFileUI(){
         try{localStorage.setItem(key,JSON.stringify(fbFiles));}catch(e){}
         updateFileUI(type);
         if(type==='nf'&&fbFiles.length){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
-      }).catch(e=>console.warn('Firebase file load:',e));
+      }).catch(e=>{console.warn('Firebase file load:',e);});
     });
   }
 }
