@@ -5068,14 +5068,41 @@ function searchProdutoTc(){
   if(skuReal)skuReal.value='';
   if(nomeEl)nomeEl.value='';
   skuEl.style.borderColor='#d1d5db';
+  _hideTcOutroDesc();
   if(q.length<1){dd.style.display='none';return;}
   _tcProdResults=_catSearch(q);
-  if(!_tcProdResults.length){dd.style.display='none';skuEl.style.borderColor='#ef4444';return;}
   _posDd(dd,skuEl);
-  dd.innerHTML=_tcProdResults.map((r,i)=>
-    `<div class="prod-dd-item" onmousedown="selectProdutoTc(${i})"><span class="prod-dd-sku">${r.sku.toUpperCase()}</span><span class="prod-dd-nome">${r.nome}</span></div>`
-  ).join('');
+  let html='';
+  if(_tcProdResults.length){
+    html=_tcProdResults.map((r,i)=>
+      `<div class="prod-dd-item" onmousedown="selectProdutoTc(${i})"><span class="prod-dd-sku">${r.sku.toUpperCase()}</span><span class="prod-dd-nome">${r.nome}</span></div>`
+    ).join('');
+  } else {
+    skuEl.style.borderColor='#f59e0b';
+  }
+  // Sempre mostra "Outro" no rodapé do dropdown
+  html+=`<div class="prod-dd-item" onmousedown="selectTcOutro()" style="border-top:1px solid #e5e7eb;color:#7c3aed;font-style:italic"><span class="prod-dd-sku" style="color:#7c3aed">OUTRO</span><span class="prod-dd-nome">Produto não cadastrado — digitar descrição</span></div>`;
+  dd.innerHTML=html;
   dd.style.display='block';
+}
+function selectTcOutro(){
+  const skuEl=document.getElementById('tcProdSku');
+  const skuReal=document.getElementById('tcProdSkuReal');
+  const nomeEl=document.getElementById('tcProdNome');
+  const dd=_mkDd('tcProdDropdown');
+  if(skuEl){skuEl.value='OUTRO';skuEl.style.borderColor='#7c3aed';}
+  if(skuReal)skuReal.value='OUTRO';
+  if(nomeEl)nomeEl.value='';
+  dd.style.display='none';
+  _showTcOutroDesc();
+}
+function _showTcOutroDesc(){
+  const el=document.getElementById('tcProdOutroDesc');
+  if(el){el.style.display='block';el.focus();}
+}
+function _hideTcOutroDesc(){
+  const el=document.getElementById('tcProdOutroDesc');
+  if(el){el.style.display='none';el.value='';}
 }
 function selectProdutoTc(idx){
   const r=_tcProdResults[idx];if(!r)return;
@@ -5087,20 +5114,28 @@ function selectProdutoTc(idx){
   if(skuReal)skuReal.value=r.sku.toUpperCase();
   if(nomeEl)nomeEl.value=r.nome;
   dd.style.display='none';
+  _hideTcOutroDesc();
   document.getElementById('tcProdQtd')?.focus();
 }
 function hideProdutoDropdownTc(){setTimeout(()=>{const d=_mkDd('tcProdDropdown');d.style.display='none';},150);}
 function addTcProduto(){
   const gv=id=>((document.getElementById(id)||{}).value||'').trim();
-  const nome=gv('tcProdNome');
+  const skuReal=gv('tcProdSkuReal');
+  let nome=gv('tcProdNome');
+  // Caso "Outro": usa a descrição livre digitada pelo usuário
+  if(skuReal==='OUTRO'){
+    nome=gv('tcProdOutroDesc');
+    if(!nome){toast('Digite a descrição do produto','err');document.getElementById('tcProdOutroDesc')?.focus();return;}
+  }
   if(!nome){toast('Informe o nome do produto — selecione da lista','err');return;}
-  const p={sku:gv('tcProdSkuReal'),nome,qtd:parseInt(gv('tcProdQtd'))||1,
+  const p={sku:skuReal,nome,qtd:parseInt(gv('tcProdQtd'))||1,
     origem:gv('tcProdOrigem')||'CD',destFisico:gv('tcProdDestFisico')||'CD',
     destNota:gv('tcProdDestNota')||'nao_possui'};
   _tcProdutos.push(p);renderTcProdLista();
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
+  _hideTcOutroDesc();
   const skuEl=document.getElementById('tcProdSku');
   if(skuEl){skuEl.style.borderColor='#d1d5db';skuEl.focus();}
 }
@@ -8024,6 +8059,8 @@ function addTcToRoute(tcId, routeType, per){
                 oninput="searchProdutoTc()" onblur="hideProdutoDropdownTc()" autocomplete="off">
               <input type="hidden" id="tcProdSkuReal">
               <input type="hidden" id="tcProdNome">
+              <input type="text" id="tcProdOutroDesc" placeholder="Digite a descrição do produto..."
+                style="display:none;width:100%;margin-top:4px;padding:6px 8px;border:1.5px solid #7c3aed;border-radius:7px;font-size:12px;box-sizing:border-box;background:#faf5ff">
             </div>
             <div>
               <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
