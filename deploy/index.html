@@ -1000,19 +1000,15 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
         </div>
         <!-- Anexos: sempre visíveis quando NF -->
         <div class="fg"><label>Nota Fiscal <span style="color:#9ca3af;font-size:0.72rem">(PDF, máx 5MB)</span></label>
+          <div id="nfList" style="margin-bottom:4px"></div>
           <div class="file-row">
-            <label class="file-lbl">📎 Selecionar<input type="file" accept=".pdf" id="fNf" onchange="handleFile('nf',this)"></label>
-            <span class="file-fname" id="nfName" style="display:none"></span>
-            <button class="file-down" id="nfDown" onclick="downloadFile('nf')" style="display:none">⬇ Baixar</button>
-            <button class="file-rm" id="nfDel" onclick="removeFile('nf')" title="Remover" style="display:none">✕</button>
+            <label class="file-lbl">📎 Adicionar NF<input type="file" accept=".pdf" id="fNf" onchange="handleFile('nf',this)"></label>
           </div>
         </div>
         <div class="fg"><label>Boleto <span style="color:#9ca3af;font-size:0.72rem">(PDF, máx 5MB)</span></label>
+          <div id="boletoList" style="margin-bottom:4px"></div>
           <div class="file-row">
-            <label class="file-lbl">📎 Selecionar<input type="file" accept=".pdf" id="fBoleto" onchange="handleFile('boleto',this)"></label>
-            <span class="file-fname" id="boletoName" style="display:none"></span>
-            <button class="file-down" id="boletoDown" onclick="downloadFile('boleto')" style="display:none">⬇ Baixar</button>
-            <button class="file-rm" id="boletoDel" onclick="removeFile('boleto')" title="Remover" style="display:none">✕</button>
+            <label class="file-lbl">📎 Adicionar Boleto<input type="file" accept=".pdf" id="fBoleto" onchange="handleFile('boleto',this)"></label>
           </div>
         </div>
       </div>
@@ -2589,58 +2585,71 @@ function remStop(per,idx){
 // ── File attachments ───────────────────────────────────────────────────────
 function nfKey(id){return'cdl_nf_'+id;}
 function blKey(id){return'cdl_bl_'+id;}
+// ── Arquivos múltiplos (NF e Boleto) ─────────────────────────────────────
+function _getFiles(type){
+  const key=type==='nf'?nfKey(editId):blKey(editId);
+  const raw=localStorage.getItem(key);
+  if(!raw)return[];
+  try{
+    const parsed=JSON.parse(raw);
+    // compatibilidade com formato antigo {name,data}
+    if(parsed&&!Array.isArray(parsed)&&parsed.name)return[parsed];
+    return Array.isArray(parsed)?parsed:[];
+  }catch(e){return[];}
+}
+function _setFiles(type,arr){
+  const key=type==='nf'?nfKey(editId):blKey(editId);
+  try{localStorage.setItem(key,JSON.stringify(arr));}catch(e){toast('Armazenamento cheio — arquivo muito grande','err');return false;}
+  return true;
+}
 function handleFile(type,input){
   const file=input.files[0];if(!file)return;
   if(file.type!=='application/pdf'){toast('Selecione um arquivo PDF','err');input.value='';return;}
   if(file.size>5*1024*1024){toast('Arquivo muito grande (máx 5MB)','err');input.value='';return;}
   const reader=new FileReader();
   reader.onload=e=>{
-    const key=type==='nf'?nfKey(editId):blKey(editId);
-    try{
-      localStorage.setItem(key,JSON.stringify({name:file.name,data:e.target.result}));
-      updateFileUI(type,file.name);
-      if(type==='nf'){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
-      // update flag on delivery object if it exists
-      const idx=ST.deliveries.findIndex(x=>x.id===editId);
-      if(idx>=0){ST.deliveries[idx][type==='nf'?'hasNf':'hasBoleto']=true;save();}
-      toast('Arquivo carregado!','ok');
-    }catch(err){toast('Armazenamento cheio — arquivo muito grande','err');}
+    const files=_getFiles(type);
+    files.push({name:file.name,data:e.target.result});
+    if(!_setFiles(type,files)){input.value='';return;}
+    updateFileUI(type);
+    if(type==='nf'){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
+    const idx=ST.deliveries.findIndex(x=>x.id===editId);
+    if(idx>=0){ST.deliveries[idx][type==='nf'?'hasNf':'hasBoleto']=true;save();}
+    input.value='';
+    toast('Arquivo adicionado!','ok');
   };
   reader.readAsDataURL(file);
 }
-function downloadFile(type){
+function downloadFile(type,idx){
   if(!editId)return;
-  const key=type==='nf'?nfKey(editId):blKey(editId);
-  const raw=localStorage.getItem(key);if(!raw)return;
-  try{const{name,data}=JSON.parse(raw);const a=document.createElement('a');a.href=data;a.download=name;a.click();}catch(e){}
+  const files=_getFiles(type);
+  const f=files[idx];if(!f)return;
+  try{const a=document.createElement('a');a.href=f.data;a.download=f.name;a.click();}catch(e){}
 }
-function removeFile(type){
+function removeFile(type,idx){
   if(!editId)return;
-  const key=type==='nf'?nfKey(editId):blKey(editId);
-  localStorage.removeItem(key);
-  updateFileUI(type,null);
-  if(type==='nf'){const b=document.getElementById('fNfNumBox');if(b)b.style.display='none';const n=document.getElementById('fNfNum');if(n)n.value='';}
-  const idx=ST.deliveries.findIndex(x=>x.id===editId);
-  if(idx>=0){ST.deliveries[idx][type==='nf'?'hasNf':'hasBoleto']=false;save();}
+  const files=_getFiles(type);
+  files.splice(idx,1);
+  _setFiles(type,files);
+  updateFileUI(type);
+  if(type==='nf'&&files.length===0){const b=document.getElementById('fNfNumBox');if(b)b.style.display='none';const n=document.getElementById('fNfNum');if(n)n.value='';}
+  const delivIdx=ST.deliveries.findIndex(x=>x.id===editId);
+  if(delivIdx>=0){ST.deliveries[delivIdx][type==='nf'?'hasNf':'hasBoleto']=files.length>0;save();}
   toast('Arquivo removido','ok');
 }
-function updateFileUI(type,name){
-  const p=type==='nf'?'nf':'boleto';
-  const nm=document.getElementById(p+'Name');
-  const dn=document.getElementById(p+'Down');
-  const dl=document.getElementById(p+'Del');
-  if(!nm)return;
-  if(name){nm.textContent=name;nm.style.display='';dn.style.display='';dl.style.display='';}
-  else{nm.style.display='none';dn.style.display='none';dl.style.display='none';}
+function updateFileUI(type){
+  const listEl=document.getElementById(type==='nf'?'nfList':'boletoList');
+  if(!listEl)return;
+  const files=_getFiles(type);
+  if(!files.length){listEl.innerHTML='';return;}
+  listEl.innerHTML=files.map((f,i)=>`<div class="file-row" style="margin-bottom:3px">
+    <span class="file-fname" style="display:inline">${f.name}</span>
+    <button class="file-down" onclick="downloadFile('${type}',${i})">⬇ Baixar</button>
+    <button class="file-rm" onclick="removeFile('${type}',${i})" title="Remover">✕</button>
+  </div>`).join('');
 }
 function loadFileUI(){
-  ['nf','boleto'].forEach(type=>{
-    const key=type==='nf'?nfKey(editId):blKey(editId);
-    const raw=localStorage.getItem(key);
-    if(raw){try{const{name}=JSON.parse(raw);updateFileUI(type,name);}catch(e){updateFileUI(type,null);}}
-    else{updateFileUI(type,null);}
-  });
-  // reset file inputs
+  ['nf','boleto'].forEach(type=>updateFileUI(type));
   ['fNf','fBoleto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
