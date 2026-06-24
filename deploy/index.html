@@ -1202,6 +1202,40 @@ function initFirebase(){
       renderSidebar();
       renderContent();
     });
+    // Listener dedicado para driverStatus — nunca bloqueado por _fbSaving
+    // Garante que atualizações do motorista aparecem em tempo real para todos
+    const _DS_RANK_L={pendente:0,a_caminho:1,entregue:2,nao_entregue:1};
+    _fbDb.ref('cdl_driverStatus').on('value',(snap)=>{
+      if(!snap.exists())return;
+      const dsByDate=snap.val();
+      let changed=false;
+      Object.keys(dsByDate||{}).forEach(date=>{
+        if(!ST.routePlans[date])ST.routePlans[date]={};
+        const localDs=ST.routePlans[date].driverStatus||{};
+        const serverDs=dsByDate[date]||{};
+        const merged={...localDs};
+        Object.keys(serverDs).forEach(sk=>{
+          const srv=serverDs[sk];
+          const loc=localDs[sk];
+          if(!loc){merged[sk]=srv;changed=true;return;}
+          const srvRank=_DS_RANK_L[srv?.status]??-1;
+          const locRank=_DS_RANK_L[loc?.status]??-1;
+          if(srvRank>locRank){merged[sk]=srv;changed=true;}
+          else if(srvRank===locRank){
+            const srvTs=srv?.finalizadoEm||srv?.iniciadoEm||'';
+            const locTs=loc?.finalizadoEm||loc?.iniciadoEm||'';
+            if(srvTs>locTs){merged[sk]=srv;changed=true;}
+          }
+        });
+        ST.routePlans[date].driverStatus=merged;
+      });
+      if(!changed)return;
+      try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+      const modalOpen=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');
+      if(modalOpen)return;
+      renderSidebar();
+      renderContent();
+    });
     // Load config (drivers, vehicles, catalog, locaisColeta)
     _fbDb.ref('cdl_config').once('value').then(snap=>{
       if(!snap.exists()){
@@ -1330,7 +1364,19 @@ let editingRoute=false,editingBy='';
 let editId=null,newCard=false,insPer=null,insAfter=-1,dragSrc=null,_cardClickTimer=null;
 let editingTransfRoute=false,editingTransfBy='',tDragSrc=null;
 
-function save(){try{localStorage.setItem(SKEY,JSON.stringify(ST))}catch(e){}if(_fbDb){_fbSaving=true;_fbDb.ref('cdl_state').set(ST).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});}}
+function save(){
+  try{localStorage.setItem(SKEY,JSON.stringify(ST))}catch(e){}
+  if(_fbDb){
+    _fbSaving=true;
+    _fbDb.ref('cdl_state').set(ST).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
+    // Grava driverStatus no caminho dedicado — listener independente do _fbSaving
+    const _ds={};
+    Object.keys(ST.routePlans||{}).forEach(date=>{
+      if(ST.routePlans[date]?.driverStatus)_ds[date]=ST.routePlans[date].driverStatus;
+    });
+    if(Object.keys(_ds).length)_fbDb.ref('cdl_driverStatus').update(_ds).catch(e=>console.warn('driverStatus sync:',e));
+  }
+}
 function load(){
   try{
     const r=localStorage.getItem(SKEY);if(!r)return;
