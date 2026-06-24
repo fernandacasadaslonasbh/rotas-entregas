@@ -1121,14 +1121,19 @@ let FIREBASE_CONFIG={
 };
 let _fbDb=null,_fbSaving=false;
 function _applyState(s){
-  // Preservar driverStatus local antes de sobrescrever routePlans
-  // (evita que sync do Firebase apague atualizações feitas pelo motorista)
+  // Preservar campos locais que nunca devem ser sobrescritos por estado desatualizado de outro usuário
+  // 1) driverStatus — atualizado pelo motorista
   const _localDs={};
   Object.keys(ST.routePlans||{}).forEach(date=>{
     if(ST.routePlans[date]&&ST.routePlans[date].driverStatus){
       _localDs[date]=ST.routePlans[date].driverStatus;
     }
   });
+  // 2) finalizedDates — dias finalizados nunca voltam por sincronização remota
+  const _localFinal=new Set(Array.isArray(ST.finalizedDates)?ST.finalizedDates:[]);
+  // 3) transfChecks — checks marcados nunca são desmarcados por sincronização remota
+  const _localChecks=JSON.parse(JSON.stringify(ST.transfChecks||{}));
+
   ST.deliveries=Array.isArray(s.deliveries)?s.deliveries:[];
   ST.selectedDate=s.selectedDate||null;
   ST.finalizedDates=Array.isArray(s.finalizedDates)?s.finalizedDates:[];
@@ -1138,6 +1143,7 @@ function _applyState(s){
   if(s.routePlan&&s.routePlan.date&&s.routePlan.manha)ST.routePlans[s.routePlan.date]=s.routePlan;
   if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
   if(s.transfLocEdits&&typeof s.transfLocEdits==='object')ST.transfLocEdits=s.transfLocEdits;
+
   // Restaurar driverStatus local por cima dos dados do servidor
   Object.keys(_localDs).forEach(date=>{
     if(!ST.routePlans[date])ST.routePlans[date]={};
@@ -1145,6 +1151,25 @@ function _applyState(s){
       ...(ST.routePlans[date].driverStatus||{}),
       ..._localDs[date]
     };
+  });
+  // Restaurar finalizedDates locais (união: datas finalizadas localmente nunca são perdidas)
+  _localFinal.forEach(d=>{if(!ST.finalizedDates.includes(d))ST.finalizedDates.push(d);});
+  // Restaurar transfChecks locais (true sempre vence: checks marcados nunca são desmarcados)
+  Object.keys(_localChecks).forEach(date=>{
+    if(!ST.transfChecks[date])ST.transfChecks[date]={};
+    Object.keys(_localChecks[date]).forEach(k=>{
+      const lv=_localChecks[date][k];
+      if(lv===true){ST.transfChecks[date][k]=true;}
+      else if(lv&&typeof lv==='object'&&!Array.isArray(lv)){
+        // objeto (alerta/report): manter local se servidor não tem
+        if(!ST.transfChecks[date][k])ST.transfChecks[date][k]=lv;
+      } else if(Array.isArray(lv)){
+        // array (ex: __tabAlerts__): união
+        const sv=ST.transfChecks[date][k];
+        if(Array.isArray(sv)){ST.transfChecks[date][k]=[...new Set([...sv,...lv])];}
+        else{ST.transfChecks[date][k]=lv;}
+      }
+    });
   });
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
