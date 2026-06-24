@@ -2690,21 +2690,30 @@ function remStop(per,idx){
 // ── File attachments ───────────────────────────────────────────────────────
 function nfKey(id){return'cdl_nf_'+id;}
 function blKey(id){return'cdl_bl_'+id;}
-// ── Arquivos múltiplos (NF e Boleto) ─────────────────────────────────────
+// ── Arquivos múltiplos (NF e Boleto) — localStorage como cache + Firebase como fonte de verdade ──
 function _getFiles(type){
   const key=type==='nf'?nfKey(editId):blKey(editId);
   const raw=localStorage.getItem(key);
   if(!raw)return[];
   try{
     const parsed=JSON.parse(raw);
-    // compatibilidade com formato antigo {name,data}
-    if(parsed&&!Array.isArray(parsed)&&parsed.name)return[parsed];
+    if(parsed&&!Array.isArray(parsed)&&parsed.name)return[parsed]; // formato antigo
     return Array.isArray(parsed)?parsed:[];
   }catch(e){return[];}
 }
 function _setFiles(type,arr){
   const key=type==='nf'?nfKey(editId):blKey(editId);
-  try{localStorage.setItem(key,JSON.stringify(arr));}catch(e){toast('Armazenamento cheio — arquivo muito grande','err');return false;}
+  // Salva no localStorage (cache local)
+  try{localStorage.setItem(key,JSON.stringify(arr));}catch(e){console.warn('localStorage cheio:',e);}
+  // Salva no Firebase (fonte de verdade compartilhada entre dispositivos)
+  if(_fbDb&&editId){
+    const fbKey='cdl_files/'+editId+'/'+type;
+    if(arr.length){
+      _fbDb.ref(fbKey).set(arr).catch(e=>console.warn('Firebase file save:',e));
+    } else {
+      _fbDb.ref(fbKey).remove().catch(e=>console.warn('Firebase file remove:',e));
+    }
+  }
   return true;
 }
 function handleFile(type,input){
@@ -2715,7 +2724,7 @@ function handleFile(type,input){
   reader.onload=e=>{
     const files=_getFiles(type);
     files.push({name:file.name,data:e.target.result});
-    if(!_setFiles(type,files)){input.value='';return;}
+    _setFiles(type,files);
     updateFileUI(type);
     if(type==='nf'){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
     const idx=ST.deliveries.findIndex(x=>x.id===editId);
@@ -2754,8 +2763,24 @@ function updateFileUI(type){
   </div>`).join('');
 }
 function loadFileUI(){
+  // Primeiro mostra o que tem no localStorage (instantâneo)
   ['nf','boleto'].forEach(type=>updateFileUI(type));
   ['fNf','fBoleto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  // Depois busca do Firebase (sincroniza com outros dispositivos)
+  if(_fbDb&&editId){
+    ['nf','boleto'].forEach(type=>{
+      _fbDb.ref('cdl_files/'+editId+'/'+type).once('value').then(snap=>{
+        if(!snap.exists())return;
+        const fbFiles=snap.val();
+        if(!Array.isArray(fbFiles)||!fbFiles.length)return;
+        // Atualiza cache local e UI
+        const key=type==='nf'?nfKey(editId):blKey(editId);
+        try{localStorage.setItem(key,JSON.stringify(fbFiles));}catch(e){}
+        updateFileUI(type);
+        if(type==='nf'&&fbFiles.length){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
+      }).catch(e=>console.warn('Firebase file load:',e));
+    });
+  }
 }
 
 // ── Card modal ─────────────────────────────────────────────────────────────
