@@ -5273,36 +5273,47 @@ function handleTcExcelFile(input){
         const wb=XLSX.read(e.target.result,{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+        const cat=getCatalogo(); // catálogo do app para lookup por SKU
         const ORIG_OPTS=['CD','Matriz','Filial','Cliente'];
         const NF_OPTS=['CD','Matriz','Filial','nao_possui'];
         const normalize=v=>String(v||'').trim();
         const matchOpt=(v,opts,def)=>{
           const n=normalize(v).toLowerCase();
-          const found=opts.find(o=>o.toLowerCase()===n||o.toLowerCase().startsWith(n));
+          const found=opts.find(o=>o.toLowerCase()===n||o.toLowerCase().startsWith(n)||n.startsWith(o.toLowerCase()));
           return found||def;
         };
-        let added=0;
+        const getCol=(row,...keys)=>{for(const k of keys){const v=row[k];if(v!==undefined&&v!=='')return normalize(v);}return '';};
+        let added=0,semNome=0;
         rows.forEach(row=>{
-          // Accept flexible column names
-          const sku=normalize(row['SKU']||row['sku']||row['Sku']||'');
-          const nome=normalize(row['NOME']||row['Nome']||row['nome']||row['PRODUTO']||row['Produto']||'');
-          const qtd=parseInt(row['QUANTIDADE']||row['Quantidade']||row['QTD']||row['Qtd']||row['qtd']||1)||1;
-          const orig=matchOpt(row['ORIGEM']||row['Origem']||row['origem']||'',ORIG_OPTS,'CD');
-          const dest=matchOpt(row['DESTINO']||row['Destino']||row['destino']||row['DESTINO FISICO']||row['Destino Fisico']||'',ORIG_OPTS,'CD');
-          const nf=matchOpt(row['NF TRANSFERENCIA']||row['NF Transferencia']||row['nf_transferencia']||row['NF']||row['nf']||'',NF_OPTS,'nao_possui');
-          if(!sku&&!nome) return;
-          _tcProdutos.push({sku,nome,qtd,origem:orig,destFisico:dest,destNota:nf});
+          const sku=getCol(row,'SKU','sku','Sku','CÓDIGO','Código','codigo','CODIGO').toLowerCase();
+          const qtdRaw=getCol(row,'Quantidade','QUANTIDADE','QTD','Qtd','qtd');
+          const qtd=parseInt(qtdRaw)||1;
+          const origRaw=getCol(row,'Origem','ORIGEM','origem');
+          const destRaw=getCol(row,'Destino Físico','Destino Fisico','DESTINO FÍSICO','DESTINO FISICO','Destino','DESTINO','destino');
+          const nfRaw=getCol(row,'NF de Transferência','NF de Transferencia','NF Transferência','NF Transferencia','NF TRANSFERENCIA','NF','nf');
+          if(!sku)return;
+          // Buscar nome no catálogo do app pelo SKU (ignora coluna Descrição da planilha)
+          const nomeApp=cat[sku]||cat[sku.toUpperCase()]||'';
+          const nomePlanilha=getCol(row,'Descrição','Descricao','DESCRIÇÃO','DESCRICAO','NOME','Nome','nome','PRODUTO','Produto');
+          const nome=nomeApp||nomePlanilha;
+          if(!nome){semNome++;return;}
+          const orig=matchOpt(origRaw,ORIG_OPTS,'CD');
+          const dest=matchOpt(destRaw,ORIG_OPTS,'Filial');
+          const nf=matchOpt(nfRaw,NF_OPTS,'nao_possui');
+          _tcProdutos.push({sku:sku.toUpperCase(),nome,qtd,origem:orig,destFisico:dest,destNota:nf});
           added++;
         });
         renderTcProdLista();
         input.value='';
-        if(added>0) toast(added+' produto'+( added!==1?'s':'')+' importado'+( added!==1?'s':'')+'!','ok');
-        else toast('Nenhum produto encontrado na planilha','err');
+        if(added>0){
+          let msg=added+' produto'+(added!==1?'s':'')+' importado'+(added!==1?'s':'')+'!';
+          if(semNome>0)msg+=' ('+semNome+' SKU'+(semNome>1?'s':'')+' sem cadastro ignorado'+(semNome>1?'s':'')+')';
+          toast(msg,'ok');
+        } else toast('Nenhum produto encontrado na planilha','err');
       }catch(err){toast('Erro ao ler planilha: '+err.message,'err');}
     };
     reader.readAsArrayBuffer(file);
   }
-  // Load SheetJS on demand
   if(window.XLSX){processXlsx(window.XLSX);return;}
   const s=document.createElement('script');
   s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
@@ -7997,7 +8008,13 @@ function addTcToRoute(tcId, routeType, per){
         </div>
         <!-- Adicionar produto -->
         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px">
-          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📦 Adicionar produto</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:700;color:#374151">📦 Adicionar produto</div>
+            <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;color:#166534">
+              📊 Importar Planilha
+              <input type="file" id="tcExcelInput" accept=".xlsx,.xls" style="display:none" onchange="handleTcExcelFile(this)">
+            </label>
+          </div>
           <!-- linha 1: produto + qtd -->
           <div style="display:grid;grid-template-columns:1fr 80px;gap:6px;margin-bottom:6px">
             <div style="position:relative">
