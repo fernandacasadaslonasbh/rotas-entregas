@@ -902,7 +902,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
             <input type="text" id="fProdNome" placeholder="Nome aparece após selecionar" readonly style="width:100%;margin-top:4px;background:#f9fafb;font-size:0.8rem;border-radius:6px;padding:5px 8px;border:1px solid #e5e7eb;color:#374151" onclick="document.getElementById('fProdSku').focus()">
             <input type="text" id="fProdOutroDesc" placeholder="Digite a descrição do produto..." style="display:none;width:100%;margin-top:4px;padding:5px 8px;border:1.5px solid #7c3aed;border-radius:6px;font-size:0.8rem;box-sizing:border-box;background:#faf5ff">
           </div>
-          <input type="number" id="fProdQtd" placeholder="Qtd" min="1" style="width:60px">
+          <input type="number" id="fProdQtd" placeholder="Qtd" min="0.01" step="0.01" style="width:60px">
           <select id="fProdOrigem" style="padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:0.83rem">
             <option value="">Origem</option>
             <option value="Matriz">Matriz</option>
@@ -4797,7 +4797,7 @@ function initCardProdutos(existing){
 function addProdutoCard(){
   const skuRaw=(document.getElementById('fProdSku')?.value||'').trim();
   let nome=(document.getElementById('fProdNome')?.value||'').trim();
-  const qtd=parseInt(document.getElementById('fProdQtd')?.value||'1')||1;
+  const qtd=parseFloat(document.getElementById('fProdQtd')?.value||'1')||1;
   const origem=(document.getElementById('fProdOrigem')?.value||'');
   // Caso "Outro": usa descrição livre
   if(skuRaw==='OUTRO'){
@@ -4838,7 +4838,7 @@ function renderCardProdutos(){
           <div><label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Nome</label>
             <input id="cpedit-nome" value="${esc(p.nome||'')}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
           <div><label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
-            <input id="cpedit-qtd" type="number" min="1" value="${p.qtd||1}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
+            <input id="cpedit-qtd" type="number" min="0.01" step="0.01" value="${p.qtd||1}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
           <div><label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Origem</label>
             <input id="cpedit-origem" value="${esc(p.origem||'')}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
         </div>
@@ -4862,7 +4862,7 @@ function saveCardProdEdit(i){
   _cardProdutos[i]={
     sku:gv('cpedit-sku'),
     nome:gv('cpedit-nome')||_cardProdutos[i].nome,
-    qtd:parseInt(document.getElementById('cpedit-qtd')?.value)||1,
+    qtd:parseFloat(document.getElementById('cpedit-qtd')?.value)||1,
     origem:gv('cpedit-origem')
   };
   _cardProdEditIdx=null;
@@ -5264,7 +5264,7 @@ function addTcProduto(){
     if(!nome){toast('Digite a descrição do produto','err');document.getElementById('tcProdOutroDesc')?.focus();return;}
   }
   if(!nome){toast('Informe o nome do produto — selecione da lista','err');return;}
-  const p={sku:skuReal,nome,qtd:parseInt(gv('tcProdQtd'))||1,
+  const p={sku:skuReal,nome,qtd:parseFloat(gv('tcProdQtd'))||1,
     origem:gv('tcProdOrigem')||'CD',destFisico:gv('tcProdDestFisico')||'CD',
     destNota:gv('tcProdDestNota')||'nao_possui'};
   _tcProdutos.push(p);renderTcProdLista();
@@ -5458,7 +5458,7 @@ function handleTcExcelFile(input){
         rows.forEach(row=>{
           const sku=getCol(row,'SKU','sku','Sku','CÓDIGO','Código','codigo','CODIGO').toLowerCase();
           const qtdRaw=getCol(row,'Quantidade','QUANTIDADE','QTD','Qtd','qtd');
-          const qtd=parseInt(qtdRaw)||1;
+          const qtd=parseFloat(qtdRaw)||1;
           const origRaw=getCol(row,'Origem','ORIGEM','origem');
           const destRaw=getCol(row,'Destino Físico','Destino Fisico','DESTINO FÍSICO','DESTINO FISICO','Destino','DESTINO','destino');
           const nfRaw=getCol(row,'NF de Transferência','NF de Transferencia','NF Transferência','NF Transferencia','NF TRANSFERENCIA','NF','nf');
@@ -5519,7 +5519,7 @@ function renderTcProdLista(){
             <div><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Nome</div>
               <input id="tcedit-nome" value="${esc(p.nome||'')}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
             <div><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Qtd</div>
-              <input id="tcedit-qtd" type="number" min="1" value="${p.qtd||1}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
+              <input id="tcedit-qtd" type="number" min="0.01" step="0.01" value="${p.qtd||1}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
             <div><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Origem</div>
               <select id="tcedit-orig" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box">${selOrig}</select></div>
             <div><div style="font-size:10px;color:#6b7280;margin-bottom:2px">Dest. Físico</div>
@@ -5558,7 +5558,7 @@ function saveTcProdEdit(i){
   _tcProdutos[i]={
     sku:gv('tcedit-sku'),
     nome:gv('tcedit-nome')||_tcProdutos[i].nome,
-    qtd:parseInt(document.getElementById('tcedit-qtd')?.value)||1,
+    qtd:parseFloat(document.getElementById('tcedit-qtd')?.value)||1,
     origem:gv('tcedit-orig'),
     destFisico:gv('tcedit-dest'),
     destNota:gv('tcedit-nota')
@@ -6787,7 +6787,7 @@ function openTransfRowEdit(date, tcId, prodIdx, type){
         <div><label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">Nome</label>
           <input id="tre-nome" value="${esc(p.nome||'')}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box"></div>
         <div><label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">Qtd</label>
-          <input id="tre-qtd" type="number" min="1" value="${p.qtd||1}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box"></div>
+          <input id="tre-qtd" type="number" min="0.01" step="0.01" value="${p.qtd||1}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
         <div><label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">Origem</label>
@@ -6819,7 +6819,7 @@ function saveTransfRowEdit(date, tcId, prodIdx, type){
   tc.produtos[prodIdx]={
     sku:(document.getElementById('tre-sku')?.value||'').trim(),
     nome:(document.getElementById('tre-nome')?.value||'').trim(),
-    qtd:parseInt(document.getElementById('tre-qtd')?.value)||1,
+    qtd:parseFloat(document.getElementById('tre-qtd')?.value)||1,
     origem:document.getElementById('tre-orig')?.value||'',
     destFisico:document.getElementById('tre-dest')?.value||'',
     destNota:document.getElementById('tre-nota')?.value||'nao_possui'
@@ -7108,7 +7108,7 @@ function openSectionEditModal(date, loc, type){
       </div>
       <div>
         <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
-        <input id="sem-add-qtd" type="number" min="1" value="1"
+        <input id="sem-add-qtd" type="number" min="0.01" step="0.01" value="1"
           style="width:100%;padding:6px 7px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box;text-align:center">
       </div>
       <div>
@@ -7162,7 +7162,7 @@ function openSectionEditModal(date, loc, type){
 
     const skuIn=document.createElement('input');skuIn.className='sem-sku';skuIn.value=r.sku||'';skuIn.style.cssText='width:60px;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px';
     const nomeIn=document.createElement('input');nomeIn.className='sem-nome';nomeIn.value=r.nome||'';nomeIn.style.cssText='min-width:120px;width:100%;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px';
-    const qtdIn=document.createElement('input');qtdIn.className='sem-qtd';qtdIn.type='number';qtdIn.min=1;qtdIn.value=r.qtd||1;qtdIn.style.cssText='width:48px;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px;text-align:center';
+    const qtdIn=document.createElement('input');qtdIn.className='sem-qtd';qtdIn.type='number';qtdIn.min=0.01;qtdIn.step=0.01;qtdIn.value=r.qtd||1;qtdIn.style.cssText='width:48px;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px;text-align:center';
 
     const del=document.createElement('button');del.type='button';
     del.style.cssText='border:none;background:none;color:#ef4444;font-size:16px;cursor:pointer;padding:2px 5px';
@@ -7247,7 +7247,7 @@ function addSemProduto(loc){
   const sku=(skuReal?.value||skuEl.value).trim();
   const nome=nomeEl?.value.trim()||'';
   if(!sku&&!nome){toast('Informe o SKU ou nome do produto','err');return;}
-  const qtd=parseInt(qtdEl?.value)||1;
+  const qtd=parseFloat(qtdEl?.value)||1;
   const destFisico=destEl?.value||'Cliente';
   const destNota=notaEl?.value||'nao_possui';
   addSemRow(sku, nome||sku, loc, destFisico, destNota, qtd);
@@ -7273,7 +7273,7 @@ function addSemRow(sku, nome, loc, destFisico, destNota, qtd){
   tr.dataset.isExtra='1';tr.dataset.isNew='1';tr.style.background='#f0fdf4';
   const skuIn=document.createElement('input');skuIn.className='sem-sku';skuIn.value=sku||'';skuIn.style.cssText='width:60px;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px';
   const nomeIn=document.createElement('input');nomeIn.className='sem-nome';nomeIn.value=nome||'';nomeIn.style.cssText='min-width:120px;width:100%;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px';
-  const qtdIn=document.createElement('input');qtdIn.className='sem-qtd';qtdIn.type='number';qtdIn.min=1;qtdIn.value=qtd||1;qtdIn.style.cssText='width:48px;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px;text-align:center';
+  const qtdIn=document.createElement('input');qtdIn.className='sem-qtd';qtdIn.type='number';qtdIn.min=0.01;qtdIn.step=0.01;qtdIn.value=qtd||1;qtdIn.style.cssText='width:48px;padding:4px 5px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px;text-align:center';
   const del=document.createElement('button');del.type='button';del.textContent='✕';
   del.style.cssText='border:none;background:none;color:#ef4444;font-size:16px;cursor:pointer;padding:2px 5px';
   del.onclick=()=>tr.remove();
@@ -7301,7 +7301,7 @@ function saveSectionEdit(date, loc, type, origRows){
   Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
     const sku=(tr.querySelector('.sem-sku')?.value||'').trim();
     const nome=(tr.querySelector('.sem-nome')?.value||'').trim();
-    const qtd=parseInt(tr.querySelector('.sem-qtd')?.value)||1;
+    const qtd=parseFloat(tr.querySelector('.sem-qtd')?.value)||1;
     const origem=tr.querySelector('.sem-orig')?.value||'';
     const destFisico=tr.querySelector('.sem-dest')?.value||'';
     const destNota=tr.querySelector('.sem-nota')?.value||'nao_possui';
@@ -8200,7 +8200,7 @@ function addTcToRoute(tcId, routeType, per){
             </div>
             <div>
               <label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
-              <input type="number" id="tcProdQtd" min="1" value="1"
+              <input type="number" id="tcProdQtd" min="0.01" step="0.01" value="1"
                 style="width:100%;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:7px;font-size:12px;box-sizing:border-box;text-align:center">
             </div>
           </div>
