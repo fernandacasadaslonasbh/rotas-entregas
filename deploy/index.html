@@ -5143,9 +5143,80 @@ function openTcForm(){
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
   sf('tcAutor',localStorage.getItem('cdl_last_autor')||'');
   document.getElementById('tcOverlay').style.display='flex';
+  _loadTcAnexos();
 }
 function closeTcForm(){
   document.getElementById('tcOverlay').style.display='none';
+}
+// ── Anexos do card TC ─────────────────────────────────────────────────────
+function _tcAnexoKey(id){return'cdl_tc_anexos_'+id;}
+function _getTcAnexos(){
+  if(!tcEditId)return[];
+  const raw=localStorage.getItem(_tcAnexoKey(tcEditId));
+  if(!raw)return[];
+  try{const p=JSON.parse(raw);return Array.isArray(p)?p:[];}catch(e){return[];}
+}
+function _setTcAnexos(arr){
+  if(!tcEditId)return;
+  try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){console.warn(e);}
+  if(_fbDb&&tcEditId){
+    const ref=_fbDb.ref('cdl_state/files/'+tcEditId+'/anexos');
+    if(arr.length)ref.set(arr).catch(e=>console.warn('TC anexo save:',e));
+    else ref.remove().catch(()=>{});
+  }
+}
+function handleTcAnexo(input){
+  const files=Array.from(input.files);
+  if(!files.length)return;
+  const MAX=10*1024*1024;
+  let added=0;
+  let pending=files.length;
+  const existentes=_getTcAnexos();
+  files.forEach(file=>{
+    if(file.size>MAX){toast(file.name+' muito grande (máx 10MB)','err');pending--;if(!pending&&added)_renderTcAnexos();return;}
+    const reader=new FileReader();
+    reader.onload=e=>{
+      existentes.push({name:file.name,data:e.target.result,type:file.type});
+      added++;pending--;
+      if(!pending){_setTcAnexos(existentes);_renderTcAnexos();toast(added+' arquivo(s) adicionado(s)!','ok');}
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value='';
+}
+function removeTcAnexo(idx){
+  const arr=_getTcAnexos();
+  arr.splice(idx,1);
+  _setTcAnexos(arr);
+  _renderTcAnexos();
+  toast('Arquivo removido','ok');
+}
+function downloadTcAnexo(idx){
+  const arr=_getTcAnexos();
+  const f=arr[idx];if(!f)return;
+  try{const a=document.createElement('a');a.href=f.data;a.download=f.name;a.click();}catch(e){}
+}
+function _renderTcAnexos(){
+  const el=document.getElementById('tcAnexoList');if(!el)return;
+  const arr=_getTcAnexos();
+  if(!arr.length){el.innerHTML='<div style="font-size:11px;color:#9ca3af">Nenhum arquivo anexado.</div>';return;}
+  el.innerHTML=arr.map((f,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f3f4f6">
+    <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">${f.name}</span>
+    <button onclick="downloadTcAnexo(${i})" style="padding:2px 8px;font-size:11px;background:#eff6ff;border:1px solid #93c5fd;border-radius:5px;cursor:pointer;color:#1d4ed8;white-space:nowrap">⬇ Baixar</button>
+    <button onclick="removeTcAnexo(${i})" style="padding:2px 6px;font-size:11px;background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;cursor:pointer;color:#dc2626">✕</button>
+  </div>`).join('');
+}
+function _loadTcAnexos(){
+  _renderTcAnexos();
+  if(_fbDb&&tcEditId){
+    _fbDb.ref('cdl_state/files/'+tcEditId+'/anexos').once('value').then(snap=>{
+      if(!snap.exists())return;
+      const arr=snap.val();
+      if(!Array.isArray(arr)||!arr.length)return;
+      try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){}
+      _renderTcAnexos();
+    }).catch(e=>console.warn('TC anexo load:',e));
+  }
 }
 
 // Fecha qualquer overlay com Escape
@@ -5191,6 +5262,7 @@ function openEditTcCard(id){
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
   document.getElementById('tcOverlay').style.display='flex';
+  _loadTcAnexos();
 }
 function lookupTcSku(){searchProdutoTc();}
 let _tcProdResults=[];
@@ -8239,6 +8311,17 @@ function addTcToRoute(tcId, routeType, per){
           </div>
         </div>
       </div><!-- fim .fg produtos -->
+      <!-- Anexos -->
+      <div class="fg">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="margin:0">📎 Anexos <span style="color:#9ca3af;font-size:0.72rem">(opcional)</span></label>
+          <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#eff6ff;border:1px solid #93c5fd;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;color:#1d4ed8">
+            + Adicionar arquivo
+            <input type="file" id="tcAnexoInput" multiple style="display:none" onchange="handleTcAnexo(this)">
+          </label>
+        </div>
+        <div id="tcAnexoList"></div>
+      </div>
       <!-- Observação -->
       <div class="fg">
         <label>📝 Observação <span style="color:#9ca3af;font-size:0.72rem">(opcional)</span></label>
