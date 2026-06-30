@@ -1180,8 +1180,7 @@ function _applyState(s){
     if(localTs>serverTs){ST.transfChecks[date]=_localChecks[date];}
     // else server é mais recente — já foi aplicado acima
   });
-  // Remove _savedAt da memória para não interferir na lógica de checks
-  Object.keys(ST.transfChecks||{}).forEach(date=>{delete ST.transfChecks[date]._savedAt;});
+  // _savedAt permanece em ST.transfChecks para resolver conflitos futuros
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
 function initFirebase(){
@@ -1355,22 +1354,22 @@ let editId=null,newCard=false,insPer=null,insAfter=-1,dragSrc=null,_cardClickTim
 let editingTransfRoute=false,editingTransfBy='',tDragSrc=null;
 
 function save(){
+  // Stampa _savedAt antes do localStorage para que _applyState possa comparar timestamps
+  const _now2=new Date().toISOString();
+  Object.keys(ST.transfChecks||{}).forEach(date=>{
+    if(ST.transfChecks[date])ST.transfChecks[date]._savedAt=_now2;
+  });
   try{localStorage.setItem(SKEY,JSON.stringify(ST))}catch(e){}
   if(_fbDb){
     _fbSaving=true;
     // update() em vez de set() — preserva cdl_state/files/ que o set() apagaria
-    const _now2=new Date().toISOString();
-    const _tcStamped={};
-    Object.keys(ST.transfChecks||{}).forEach(date=>{
-      _tcStamped[date]={...ST.transfChecks[date],_savedAt:_now2};
-    });
     const _upd={
       deliveries:ST.deliveries||[],
       selectedDate:ST.selectedDate||null,
       finalizedDates:ST.finalizedDates||[],
       routePlans:ST.routePlans||{},
       transfers:ST.transfers||[],
-      transfChecks:_tcStamped,
+      transfChecks:ST.transfChecks,
       transfLocEdits:ST.transfLocEdits||{}
     };
     _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
