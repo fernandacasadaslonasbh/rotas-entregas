@@ -1133,7 +1133,7 @@ function _applyState(s){
   });
   // 2) finalizedDates — dias finalizados nunca voltam por sincronização remota
   const _localFinal=new Set(Array.isArray(ST.finalizedDates)?ST.finalizedDates:[]);
-  // 3) transfChecks — checks marcados nunca são desmarcados por sincronização remota
+  // 3) transfChecks — captura estado local antes de aplicar servidor
   const _localChecks=JSON.parse(JSON.stringify(ST.transfChecks||{}));
 
   ST.deliveries=Array.isArray(s.deliveries)?s.deliveries:[];
@@ -1172,23 +1172,16 @@ function _applyState(s){
   });
   // Restaurar finalizedDates locais (união: datas finalizadas localmente nunca são perdidas)
   _localFinal.forEach(d=>{if(!ST.finalizedDates.includes(d))ST.finalizedDates.push(d);});
-  // Restaurar transfChecks locais (true sempre vence: checks marcados nunca são desmarcados)
+  // Mesclar transfChecks por _savedAt — salve mais recente por data sempre vence
   Object.keys(_localChecks).forEach(date=>{
-    if(!ST.transfChecks[date])ST.transfChecks[date]={};
-    Object.keys(_localChecks[date]).forEach(k=>{
-      const lv=_localChecks[date][k];
-      if(lv===true){ST.transfChecks[date][k]=true;}
-      else if(lv&&typeof lv==='object'&&!Array.isArray(lv)){
-        // objeto (alerta/report): manter local se servidor não tem
-        if(!ST.transfChecks[date][k])ST.transfChecks[date][k]=lv;
-      } else if(Array.isArray(lv)){
-        // array (ex: __tabAlerts__): união
-        const sv=ST.transfChecks[date][k];
-        if(Array.isArray(sv)){ST.transfChecks[date][k]=[...new Set([...sv,...lv])];}
-        else{ST.transfChecks[date][k]=lv;}
-      }
-    });
+    if(!ST.transfChecks[date]){ST.transfChecks[date]=_localChecks[date];return;}
+    const localTs=_localChecks[date]._savedAt||'';
+    const serverTs=ST.transfChecks[date]._savedAt||'';
+    if(localTs>serverTs){ST.transfChecks[date]=_localChecks[date];}
+    // else server é mais recente — já foi aplicado acima
   });
+  // Remove _savedAt da memória para não interferir na lógica de checks
+  Object.keys(ST.transfChecks||{}).forEach(date=>{delete ST.transfChecks[date]._savedAt;});
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
 function initFirebase(){
@@ -1366,13 +1359,18 @@ function save(){
   if(_fbDb){
     _fbSaving=true;
     // update() em vez de set() — preserva cdl_state/files/ que o set() apagaria
+    const _now2=new Date().toISOString();
+    const _tcStamped={};
+    Object.keys(ST.transfChecks||{}).forEach(date=>{
+      _tcStamped[date]={...ST.transfChecks[date],_savedAt:_now2};
+    });
     const _upd={
       deliveries:ST.deliveries||[],
       selectedDate:ST.selectedDate||null,
       finalizedDates:ST.finalizedDates||[],
       routePlans:ST.routePlans||{},
       transfers:ST.transfers||[],
-      transfChecks:ST.transfChecks||{},
+      transfChecks:_tcStamped,
       transfLocEdits:ST.transfLocEdits||{}
     };
     _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
