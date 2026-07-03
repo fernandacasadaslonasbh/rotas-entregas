@@ -4692,6 +4692,28 @@ function admLimparCatalogo(){
 }
 function getCmc(){try{return JSON.parse(localStorage.getItem('cdl_cmc')||'{}');}catch{return {};}}
 function getUnidades(){try{return JSON.parse(localStorage.getItem('cdl_unidade')||'{}');}catch{return {};}}
+let _fetchingUnidades=false;
+async function _fetchMissingUnidades(skus){
+  if(_fetchingUnidades||!skus.length)return;
+  const known=getUnidades();
+  const missing=skus.filter(s=>s&&!known[s.toLowerCase()]);
+  if(!missing.length)return;
+  _fetchingUnidades=true;
+  try{
+    const r=await fetch('/api/produto_unidade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus:missing})});
+    if(!r.ok)return;
+    const data=await r.json();
+    const updated={...known};
+    Object.entries(data).forEach(([sku,un])=>{if(un)updated[sku.toLowerCase()]=un;});
+    localStorage.setItem('cdl_unidade',JSON.stringify(updated));
+    // Atualiza células UN visíveis sem re-render completo
+    document.querySelectorAll('[data-un-sku]').forEach(td=>{
+      const s=td.dataset.unSku;
+      if(updated[s.toLowerCase()])td.textContent=updated[s.toLowerCase()];
+    });
+  }catch(e){console.warn('fetchMissingUnidades:',e);}
+  finally{_fetchingUnidades=false;}
+}
 function getIcms(){try{return JSON.parse(localStorage.getItem('cdl_icms')||'{}');}catch{return {};}}
 function getProdutoIds(){try{return JSON.parse(localStorage.getItem('cdl_produto_ids')||'{}');}catch{return {};}}
 function admSalvarCmc(){
@@ -6168,6 +6190,7 @@ function renderTransfTab(){
   }
   _renderTransfSidebar(dates);
   _renderTransfContent();
+  if(_transfDate) _autoFetchUnidadesForDate(_transfDate);
 }
 
 function _renderTransfSidebar(dates){
@@ -6285,6 +6308,13 @@ function _selectTransfDate(d){
   const dates = _transfDates();
   _renderTransfSidebar(dates);
   _renderTransfContent();
+  _autoFetchUnidadesForDate(d);
+}
+function _autoFetchUnidadesForDate(date){
+  const skus=[];
+  _tcsByDate(date||_transfDate).forEach(tc=>(tc.produtos||[]).forEach(p=>{if(p.sku)skus.push(p.sku);}));
+  (ST.deliveries||[]).filter(d2=>d2.data===(date||_transfDate)).forEach(d2=>(d2.produtos||[]).forEach(p=>{if(p.sku)skus.push(p.sku);}));
+  _fetchMissingUnidades([...new Set(skus)]);
 }
 
 function _tcsByDate(date){
@@ -7188,7 +7218,7 @@ function _buildSectionTable(rows, date, type){
       <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
       <td style="font-weight:500;font-size:13px">${r.nome||r.sku||'—'}${label}${badge}</td>
       <td style="text-align:center;font-weight:700">${r.qtd}</td>
-      <td style="text-align:center;font-size:11px;color:#6b7280;white-space:nowrap">${_uns[(r.sku||'').toLowerCase()]||'—'}</td>
+      <td data-un-sku="${r.sku||''}" style="text-align:center;font-size:11px;color:#6b7280;white-space:nowrap">${_uns[(r.sku||'').toLowerCase()]||'—'}</td>
       <td><span class="badge-orig" style="background:${origBg};color:${origCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ${sepDone?'#bbf7d0':'#e5e7eb'}">${r.origem||'—'}</span>${dblChk}</td>
       <td><span class="badge-dest" style="background:${destBg};color:${destCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ${recDone?'#bbf7d0':'#e5e7eb'}">${r.destFisico||'—'}</span>${dblChk}</td>
       <td style="font-size:12px;color:#374151">${nf}</td>
