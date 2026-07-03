@@ -3896,8 +3896,12 @@ function viewCard(id){
   const DOCFISCAL={nf:'Nota Fiscal',cupom:'Cupom Fiscal'};
   function row(label,val){if(!val&&val!==0)return '';return '<div style="display:flex;gap:6px;padding:5px 0;border-bottom:1px solid #f3f4f6"><span style="min-width:150px;color:#9ca3af;font-size:0.78rem">'+label+'</span><span style="color:#111827;font-size:0.82rem;font-weight:500;flex:1">'+val+'</span></div>';}
   let downloadBtns='';
-  if(d.hasNf)downloadBtns+=`<button onclick="event.stopPropagation();downloadFileById('nf','${id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">📄 Baixar NF</button> `;
-  if(d.hasBoleto)downloadBtns+=`<button onclick="event.stopPropagation();downloadFileById('boleto','${id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">🧾 Baixar Boleto</button>`;
+  if(d.hasNf&&d.hasBoleto){
+    downloadBtns=`<button onclick="event.stopPropagation();downloadAllFilesByDelivId('${id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">📎 Baixar Arquivos</button>`;
+  } else {
+    if(d.hasNf)downloadBtns+=`<button onclick="event.stopPropagation();downloadFileById('nf','${id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">📄 Baixar NF</button> `;
+    if(d.hasBoleto)downloadBtns+=`<button onclick="event.stopPropagation();downloadFileById('boleto','${id}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">🧾 Baixar Boleto</button>`;
+  }
   const mdfeHtml=cardPrecisaMdfe(d)
     ?`<div onclick="event.stopPropagation();showMdfePreviewCard('${id}')" style="margin-top:4px;padding:6px 10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:0.8rem;color:#dc2626;font-weight:600;cursor:pointer">🚛 MDF-e obrigatório — clique para ver mensagem ▶</div>`
     :`<div style="margin-top:4px;padding:6px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:0.8rem;color:#16a34a;font-weight:600">✅ Não precisa de MDF-e</div>`;
@@ -3947,10 +3951,43 @@ function viewCard(id){
   modal.style.display='flex';
   modal.onclick=function(e){if(e.target===modal)modal.style.display='none';};
 }
-function downloadFileById(type,delivId){
+function _triggerDownloads(files){
+  files.forEach(f=>{
+    if(!f||!f.data)return;
+    const a=document.createElement('a');a.href=f.data;a.download=f.name||(f.type||'arquivo');
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  });
+}
+function _getFilesFromLocalById(type,delivId){
   const key=type==='nf'?'cdl_nf_'+delivId:'cdl_bl_'+delivId;
-  const raw=localStorage.getItem(key);if(!raw)return;
-  try{const{name,data}=JSON.parse(raw);const a=document.createElement('a');a.href=data;a.download=name;a.click();}catch(e){}
+  const raw=localStorage.getItem(key);if(!raw)return[];
+  try{const p=JSON.parse(raw);return Array.isArray(p)?p:(p&&p.name?[p]:[]);}catch(e){return[];}
+}
+function downloadFileById(type,delivId){
+  const tryLocal=()=>_triggerDownloads(_getFilesFromLocalById(type,delivId));
+  if(_fbDb){
+    _fbDb.ref('cdl_state/files/'+delivId+'/'+type).once('value').then(snap=>{
+      if(snap.exists()){const arr=snap.val();if(Array.isArray(arr)&&arr.length){_triggerDownloads(arr);return;}}
+      tryLocal();
+    }).catch(tryLocal);
+  } else {tryLocal();}
+}
+function downloadAllFilesByDelivId(delivId){
+  const tryLocal=()=>{
+    const all=[..._getFilesFromLocalById('nf',delivId),..._getFilesFromLocalById('boleto',delivId)];
+    _triggerDownloads(all);
+    if(!all.length)toast('Nenhum arquivo encontrado localmente','err');
+  };
+  if(_fbDb){
+    _fbDb.ref('cdl_state/files/'+delivId).once('value').then(snap=>{
+      if(snap.exists()){
+        const files=snap.val();
+        const all=[...((Array.isArray(files.nf)?files.nf:[])),...((Array.isArray(files.boleto)?files.boleto:[]))];
+        if(all.length){_triggerDownloads(all);return;}
+      }
+      tryLocal();
+    }).catch(tryLocal);
+  } else {tryLocal();}
 }
 
 // Helper: build MDF-e message only with filled fields
