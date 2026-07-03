@@ -1260,6 +1260,7 @@ function initFirebase(){
       if(cfg.catalogo_cmc)localStorage.setItem('cdl_cmc',JSON.stringify(cfg.catalogo_cmc));
       if(cfg.catalogo_icms)localStorage.setItem('cdl_icms',JSON.stringify(cfg.catalogo_icms));
       if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
+      if(cfg.catalogo_unidade)localStorage.setItem('cdl_unidade',JSON.stringify(cfg.catalogo_unidade));
       if(cfg.mdfeWpp)localStorage.setItem('cdl_mdfe_whatsapp',cfg.mdfeWpp);
     }).catch(e=>console.warn('Firebase config load:',e));
     // Escutar sincronizações em tempo real — quando alguém rodar o sync, todos os dispositivos atualizam o catálogo
@@ -1275,6 +1276,7 @@ function initFirebase(){
         if(cfg.catalogo_cmc)localStorage.setItem('cdl_cmc',JSON.stringify(cfg.catalogo_cmc));
         if(cfg.catalogo_icms)localStorage.setItem('cdl_icms',JSON.stringify(cfg.catalogo_icms));
         if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
+        if(cfg.catalogo_unidade)localStorage.setItem('cdl_unidade',JSON.stringify(cfg.catalogo_unidade));
         toast('Catálogo atualizado automaticamente 🔄','ok');
       }).catch(e=>console.warn('Reload catálogo:',e));
     });
@@ -4621,6 +4623,7 @@ async function sincronizarOmieAgora(){
         if(cfg.catalogo_kits)localStorage.setItem('cdl_kits',JSON.stringify(cfg.catalogo_kits));
         if(cfg.catalogo_cmc)localStorage.setItem('cdl_cmc',JSON.stringify(cfg.catalogo_cmc));
         if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
+        if(cfg.catalogo_unidade)localStorage.setItem('cdl_unidade',JSON.stringify(cfg.catalogo_unidade));
       }
     } else {
       if(st)st.innerHTML=`<span style="color:#dc2626">✗ Erro: ${d.erro||'desconhecido'}</span>`;
@@ -4688,6 +4691,7 @@ function admLimparCatalogo(){
   toast('Catálogo apagado','ok');
 }
 function getCmc(){try{return JSON.parse(localStorage.getItem('cdl_cmc')||'{}');}catch{return {};}}
+function getUnidades(){try{return JSON.parse(localStorage.getItem('cdl_unidade')||'{}');}catch{return {};}}
 function getIcms(){try{return JSON.parse(localStorage.getItem('cdl_icms')||'{}');}catch{return {};}}
 function getProdutoIds(){try{return JSON.parse(localStorage.getItem('cdl_produto_ids')||'{}');}catch{return {};}}
 function admSalvarCmc(){
@@ -7151,8 +7155,9 @@ function _buildSectionTable(rows, date, type){
   const _someBST=!_allBST&&rows.some(r=>_getCheck(date,r.tcId,r.prodIdx,type));
   const _bstId='bstCb_'+date+'_'+type+'_'+Math.random().toString(36).slice(2,6);
   const _thCb='<input type="checkbox" id="'+_bstId+'"'+(_allBST?' checked':'')+' title="Marcar/desmarcar todos" style="cursor:pointer;accent-color:#7c3aed;width:15px;height:15px" onchange="marcarTodosTransf(\''+date+'\',\''+type+'\',this)">';
+  const _uns=getUnidades();
   let h='<table class="transf-table"><thead><tr>'
-    +'<th>SKU</th><th>Produto</th><th style="text-align:center">Qtd</th>'
+    +'<th>SKU</th><th>Produto</th><th style="text-align:center">Qtd</th><th style="text-align:center;color:#6b7280">UN</th>'
     +'<th>Origem</th><th>Destino Físico</th><th>NF Transferência</th><th title="Marcar/desmarcar todos">'+_thCb+'</th><th title="Reportar" style="color:#dc2626;text-align:center">⚠</th>'
     +'</tr></thead><tbody>';
   setTimeout(()=>{const el=document.getElementById(_bstId);if(el)el.indeterminate=_someBST;},0);
@@ -7178,11 +7183,12 @@ function _buildSectionTable(rows, date, type){
     const _rpt=_getReport(date,r.tcId,r.prodIdx,type);
     const rowStyle=_rpt?'background:#fff7ed':(isMirror?'background:#f0f9ff;opacity:.85':'');
     const rptBtn=`<button onclick="openTransfReport('${date}','${r.tcId}',${r.prodIdx},'${type}',this)" style="border:none;background:${_rpt?'#fee2e2':'none'};color:${_rpt?'#dc2626':'#d1d5db'};cursor:pointer;font-size:12px;padding:2px 5px;border-radius:5px;font-weight:${_rpt?'700':'400'}" title="${_rpt?'Reportado':'Reportar problema'}">⚠</button>`;
-    const rptNote=_rpt?`<tr style="background:#fff7ed"><td colspan="8" style="padding:3px 8px 5px 24px;font-size:11px;color:#dc2626"><strong>⚠ Reportado:</strong> ${esc(_rpt.obs)}</td></tr>`:'';
+    const rptNote=_rpt?`<tr style="background:#fff7ed"><td colspan="9" style="padding:3px 8px 5px 24px;font-size:11px;color:#dc2626"><strong>⚠ Reportado:</strong> ${esc(_rpt.obs)}</td></tr>`:'';
     h+=`<tr data-tcid="${r.tcId}" data-pidx="${r.prodIdx}" style="${chk?'opacity:.6;':''} ${rowStyle}">
       <td style="font-family:monospace;font-size:11px;color:#6b7280">${r.sku||'—'}</td>
       <td style="font-weight:500;font-size:13px">${r.nome||r.sku||'—'}${label}${badge}</td>
       <td style="text-align:center;font-weight:700">${r.qtd}</td>
+      <td style="text-align:center;font-size:11px;color:#6b7280;white-space:nowrap">${_uns[(r.sku||'').toLowerCase()]||'—'}</td>
       <td><span class="badge-orig" style="background:${origBg};color:${origCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ${sepDone?'#bbf7d0':'#e5e7eb'}">${r.origem||'—'}</span>${dblChk}</td>
       <td><span class="badge-dest" style="background:${destBg};color:${destCol};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ${recDone?'#bbf7d0':'#e5e7eb'}">${r.destFisico||'—'}</span>${dblChk}</td>
       <td style="font-size:12px;color:#374151">${nf}</td>
@@ -7967,14 +7973,8 @@ async function gerarNFOmieRoute(date, orig, nota){
     return;
   }
 
-  // Coleta rows desta rota
-  const allRows = [];
-  ['CD','Matriz','Filial'].forEach(loc=>{
-    _getSectionRows(date, loc, 'sep', {mirrors:false}).forEach(r=>{ if(!r._mirrorFrom) allRows.push(r); });
-  });
-  const filteredRaw = allRows.filter(r=> r.destNota && r.destNota !== 'nao_possui' && r.destNota !== r.origem);
-  const filteredRows = expandKitsParaResumo(filteredRaw);
-  const rows = filteredRows.filter(r=> r.origem === orig && r.destNota === nota);
+  // Usa _buildResumoRows para incluir adições/remoções/edições feitas no Resumo
+  const rows = _buildResumoRows(date).filter(r=> r.origem === orig && r.destNota === nota);
 
   if(!rows.length){
     alert('Nenhum item encontrado para ' + orig + ' → ' + nota);
@@ -8051,14 +8051,8 @@ async function gerarRemessaOmie(date, orig, nota){
     return;
   }
 
-  // Coleta rows desta rota
-  const allRows = [];
-  ['CD','Matriz','Filial'].forEach(loc=>{
-    _getSectionRows(date, loc, 'sep', {mirrors:false}).forEach(r=>{ if(!r._mirrorFrom) allRows.push(r); });
-  });
-  const filteredRaw = allRows.filter(r=> r.destNota && r.destNota !== 'nao_possui' && r.destNota !== r.origem);
-  const filteredRows = expandKitsParaResumo(filteredRaw);
-  const rows = filteredRows.filter(r=> r.origem === orig && r.destNota === nota);
+  // Usa _buildResumoRows para incluir adições/remoções/edições feitas no Resumo
+  const rows = _buildResumoRows(date).filter(r=> r.origem === orig && r.destNota === nota);
 
   if(!rows.length){
     alert('Nenhum item encontrado para ' + orig + ' → ' + nota);
