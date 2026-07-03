@@ -1135,12 +1135,20 @@ function _applyState(s){
   const _localFinal=new Set(Array.isArray(ST.finalizedDates)?ST.finalizedDates:[]);
   // 3) transfChecks — captura estado local antes de aplicar servidor
   const _localChecks=JSON.parse(JSON.stringify(ST.transfChecks||{}));
+  // 4) deliveries e transfers — preservar itens locais não presentes no servidor (union por id)
+  const _localDeliveries=Array.isArray(ST.deliveries)?[...ST.deliveries]:[];
+  const _localTransfers=Array.isArray(ST.transfers)?[...ST.transfers]:[];
 
   ST.deliveries=Array.isArray(s.deliveries)?s.deliveries:[];
   ST.selectedDate=s.selectedDate||null;
   ST.finalizedDates=Array.isArray(s.finalizedDates)?s.finalizedDates:[];
   if(s.routePlans&&typeof s.routePlans==='object')ST.routePlans=s.routePlans;
   ST.transfers=Array.isArray(s.transfers)?s.transfers:[];
+  // União: itens que existem localmente mas não no servidor são preservados
+  const _srvDelIds=new Set((ST.deliveries||[]).map(d=>d.id).filter(Boolean));
+  _localDeliveries.forEach(d=>{if(d.id&&!_srvDelIds.has(d.id))ST.deliveries.push(d);});
+  const _srvTcIds=new Set((ST.transfers||[]).map(t=>t.id).filter(Boolean));
+  _localTransfers.forEach(t=>{if(t.id&&!_srvTcIds.has(t.id))ST.transfers.push(t);});
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
   if(s.routePlan&&s.routePlan.date&&s.routePlan.manha)ST.routePlans[s.routePlan.date]=s.routePlan;
   if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
