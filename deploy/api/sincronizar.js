@@ -1,5 +1,5 @@
 /**
- * Vercel Serverless Function — Sincroniza catálogo + kits + IDs do Omie → Firebase
+ * Vercel Serverless Function — Sincroniza catálogo + kits + IDs + unidades do Omie → Firebase
  * CMC removido (atualizado em tempo real pelo botão Estoque CD)
  * Tempo estimado: ~25s para 1.300+ produtos e 420+ kits
  */
@@ -29,35 +29,36 @@ async function firebase(path, data) {
 }
 
 async function listarProdutos() {
-  const catalogo = {}, idParaSku = {}, skuParaId = {}, kits = [];
-  // Fetch sequencial para garantir que todos os produtos entrem em idParaSku
+  const catalogo = {}, idParaSku = {}, skuParaId = {}, kits = [], unidades = {};
   let pagina = 1, totalPaginas = 1;
   while (pagina <= totalPaginas) {
     const data = await omie('ListarProdutos', [{
       pagina, registros_por_pagina: 100,
       apenas_importado_api: 'N', inativo: 'N'
     }]);
-    if (data.faultstring) { pagina++; continue; } // pula página com erro, não para o loop
+    if (data.faultstring) { pagina++; continue; }
     totalPaginas = data.total_de_paginas || 1;
     for (const p of (data.produto_servico_cadastro || [])) {
       const sku  = String(p.codigo || '').trim().toLowerCase();
       const nome = String(p.descricao || '').trim();
       const id   = p.codigo_produto;
       const tipo = String(p.tipoItem || '').trim();
+      const un   = String(p.unidade || '').trim();
       if (sku && nome) {
         catalogo[sku] = nome;
         if (id) { idParaSku[id] = sku; skuParaId[sku] = id; }
         if (tipo === 'KT') kits.push(sku);
+        if (un) unidades[sku] = un;
       }
     }
     pagina++;
   }
-  return { catalogo, idParaSku, skuParaId, kits };
+  return { catalogo, idParaSku, skuParaId, kits, unidades };
 }
 
 async function buscarKits(kits, idParaSku, catalogo) {
   const composicoes = {};
-  const BATCH = 25; // aumentado de 10 para 25 para processar mais rápido
+  const BATCH = 25;
   for (let i = 0; i < kits.length; i += BATCH) {
     await Promise.all(kits.slice(i, i + BATCH).map(async (sku) => {
       try {
@@ -81,7 +82,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { catalogo, idParaSku, skuParaId, kits } = await listarProdutos();
+    const { catalogo, idParaSku, skuParaId, kits, unidades } = await listarProdutos();
     const composicoes = await buscarKits(kits, idParaSku, catalogo);
 
     const ultima = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -89,6 +90,7 @@ export default async function handler(req, res) {
       firebase('cdl_config/catalogo', catalogo),
       Object.keys(composicoes).length ? firebase('cdl_config/catalogo_kits', composicoes) : Promise.resolve(),
       Object.keys(skuParaId).length   ? firebase('cdl_config/catalogo_produto_ids', skuParaId) : Promise.resolve(),
+      Object.keys(unidades).length    ? firebase('cdl_config/catalogo_unidade', unidades) : Promise.resolve(),
       firebase('cdl_config/ultima_sincronizacao', ultima),
     ]);
 
@@ -97,6 +99,7 @@ export default async function handler(req, res) {
       produtos: Object.keys(catalogo).length,
       kits: Object.keys(composicoes).length,
       ids: Object.keys(skuParaId).length,
+      unidades: Object.keys(unidades).length,
       ultima
     });
   } catch (e) {
