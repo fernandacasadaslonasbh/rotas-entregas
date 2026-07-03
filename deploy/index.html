@@ -1135,6 +1135,9 @@ function _applyState(s){
   const _localFinal=new Set(Array.isArray(ST.finalizedDates)?ST.finalizedDates:[]);
   // 3) transfChecks — captura estado local antes de aplicar servidor
   const _localChecks=JSON.parse(JSON.stringify(ST.transfChecks||{}));
+  // 4b) tombstones — IDs deletados localmente nunca voltam
+  const _localDelTc=new Set(ST.deletedTcIds||[]);
+  const _localDelDel=new Set(ST.deletedDeliveryIds||[]);
   // 4) deliveries e transfers — preservar itens locais não presentes no servidor (union por id)
   const _localDeliveries=Array.isArray(ST.deliveries)?[...ST.deliveries]:[];
   const _localTransfers=Array.isArray(ST.transfers)?[...ST.transfers]:[];
@@ -1144,11 +1147,21 @@ function _applyState(s){
   ST.finalizedDates=Array.isArray(s.finalizedDates)?s.finalizedDates:[];
   if(s.routePlans&&typeof s.routePlans==='object')ST.routePlans=s.routePlans;
   ST.transfers=Array.isArray(s.transfers)?s.transfers:[];
-  // União: itens que existem localmente mas não no servidor são preservados
+  // Merge deletedTcIds e deletedDeliveryIds: união (tombstone nunca é perdido)
+  ST.deletedTcIds=Array.isArray(s.deletedTcIds)?s.deletedTcIds:[];
+  ST.deletedDeliveryIds=Array.isArray(s.deletedDeliveryIds)?s.deletedDeliveryIds:[];
+  _localDelTc.forEach(id=>{if(!ST.deletedTcIds.includes(id))ST.deletedTcIds.push(id);});
+  _localDelDel.forEach(id=>{if(!ST.deletedDeliveryIds.includes(id))ST.deletedDeliveryIds.push(id);});
+  const _delTcSet=new Set(ST.deletedTcIds);
+  const _delDelSet=new Set(ST.deletedDeliveryIds);
+  // Remove tombstoned items do servidor (outro user pode ter enviado de volta)
+  ST.transfers=(ST.transfers||[]).filter(t=>!_delTcSet.has(t.id));
+  ST.deliveries=(ST.deliveries||[]).filter(d=>!_delDelSet.has(d.id));
+  // União: itens locais não tombstoned que não estão no servidor são preservados
   const _srvDelIds=new Set((ST.deliveries||[]).map(d=>d.id).filter(Boolean));
-  _localDeliveries.forEach(d=>{if(d.id&&!_srvDelIds.has(d.id))ST.deliveries.push(d);});
+  _localDeliveries.forEach(d=>{if(d.id&&!_srvDelIds.has(d.id)&&!_delDelSet.has(d.id))ST.deliveries.push(d);});
   const _srvTcIds=new Set((ST.transfers||[]).map(t=>t.id).filter(Boolean));
-  _localTransfers.forEach(t=>{if(t.id&&!_srvTcIds.has(t.id))ST.transfers.push(t);});
+  _localTransfers.forEach(t=>{if(t.id&&!_srvTcIds.has(t.id)&&!_delTcSet.has(t.id))ST.transfers.push(t);});
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
   if(s.routePlan&&s.routePlan.date&&s.routePlan.manha)ST.routePlans[s.routePlan.date]=s.routePlan;
   if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
@@ -1380,7 +1393,9 @@ function save(){
       routePlans:ST.routePlans||{},
       transfers:ST.transfers||[],
       transfChecks:ST.transfChecks,
-      transfLocEdits:ST.transfLocEdits||{}
+      transfLocEdits:ST.transfLocEdits||{},
+      deletedTcIds:ST.deletedTcIds||[],
+      deletedDeliveryIds:ST.deletedDeliveryIds||[]
     };
     _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
     // Grava driverStatus no caminho dedicado — com _savedAt para resolver conflitos por timestamp
@@ -3237,6 +3252,10 @@ function delCard(){
         if(plan.transfTarde)plan.transfTarde=plan.transfTarde.filter(s=>!emptyTcIds.includes(s.tcId));
       });
     }
+  }
+  if(editId){
+    if(!ST.deletedDeliveryIds)ST.deletedDeliveryIds=[];
+    if(!ST.deletedDeliveryIds.includes(editId))ST.deletedDeliveryIds.push(editId);
   }
   ST.deliveries=ST.deliveries.filter(x=>x.id!==editId);
   if(curPlan()){
@@ -5881,6 +5900,10 @@ function showTcDuplicateDialog(dir, existObs){
 
 function deleteTcCard(){
   if(!confirm('Excluir este registro?'))return;
+  if(tcEditId){
+    if(!ST.deletedTcIds)ST.deletedTcIds=[];
+    if(!ST.deletedTcIds.includes(tcEditId))ST.deletedTcIds.push(tcEditId);
+  }
   ST.transfers=(ST.transfers||[]).filter(x=>x.id!==tcEditId);
   save();closeTcForm();renderSidebar();renderContent();toast('Registro excluído','ok');
 }
