@@ -7933,15 +7933,18 @@ function imprimirSecao(date, loc, type, apenasNaoConferidos){
   const typeLabel = type === 'sep' ? 'SEPARAÇÃO' : 'RECEBIMENTO';
   const dateLabel = _fmt_date(date);
 
+  const _unsP=getUnidades();
   const linhas = rows.map((r,i)=>{
     const nf = r.destNota && r.destNota !== 'nao_possui' ? r.destNota : '—';
     const destFis = r.destFisico || '—';
     const origem  = r.origem    || '—';
+    const un = _unsP[(r.sku||'').toLowerCase()]||'—';
     return `<tr>
       <td style="text-align:center;border:1px solid #ccc;padding:6px 4px">${i+1}</td>
       <td style="font-family:monospace;border:1px solid #ccc;padding:6px 8px">${r.sku||'—'}</td>
       <td style="border:1px solid #ccc;padding:6px 8px">${r.nome||r.sku||'—'}</td>
       <td style="text-align:center;font-weight:700;border:1px solid #ccc;padding:6px 4px">${r.qtd||1}</td>
+      <td style="text-align:center;border:1px solid #ccc;padding:6px 4px;color:#555">${un}</td>
       <td style="border:1px solid #ccc;padding:6px 8px">${origem}</td>
       <td style="border:1px solid #ccc;padding:6px 8px">${destFis}</td>
       <td style="border:1px solid #ccc;padding:6px 8px">${nf}</td>
@@ -7972,6 +7975,7 @@ function imprimirSecao(date, loc, type, apenasNaoConferidos){
       <th>SKU</th>
       <th>Produto</th>
       <th style="text-align:center">Qtd</th>
+      <th style="text-align:center">UN</th>
       <th>Origem</th>
       <th>Destino Físico</th>
       <th>NF Transferência</th>
