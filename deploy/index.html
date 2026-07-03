@@ -1793,7 +1793,7 @@ function lunchBannerHTML(morningEnd,plan){
 function startEditLunch(){
   const plan=curPlan();if(!plan)return;
   const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
-  const morningEnd=routeEndTime(8*60+30,plan.manha);
+  const morningEnd=routeEndTime(plan.manhaStart??8*60+30,plan.manha);
   const cur=plan.lunchOverride!=null?plan.lunchOverride:Math.max(12*60+30,morningEnd);
   const row=document.getElementById('lunch-banner-row');
   if(!row)return;
@@ -1817,6 +1817,42 @@ function clearLunchOverride(){
   plan.lunchOverride=null;
   save();renderRoutePanels();
 }
+function manhaBannerHTML(plan){
+  const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+  const cur=plan.manhaStart??8*60+30;
+  const isOverride=plan.manhaStart!=null;
+  return`<div id="manha-banner-row" class="lunch-banner ${isOverride?'lunch-ok':''}" style="cursor:default;${isOverride?'':'background:#f9fafb;border-color:#e5e7eb;color:#6b7280'}">
+    <span>🕗 Saída Manhã — ${fmHH(cur)}</span>
+    <button onclick="startEditManhaStart()" style="margin-left:8px;padding:2px 8px;background:transparent;border:1px solid #9ca3af;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#374151">✏️ editar</button>
+    ${isOverride?`<button onclick="clearManhaStart()" style="margin-left:4px;padding:2px 6px;background:transparent;border:1px solid #d1d5db;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#9ca3af" title="Restaurar 08:30">↩</button>`:''}
+  </div>`;
+}
+function startEditManhaStart(){
+  const plan=curPlan();if(!plan)return;
+  const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+  const cur=plan.manhaStart??8*60+30;
+  const row=document.getElementById('manha-banner-row');
+  if(!row)return;
+  row.innerHTML=`<span style="font-weight:600">🕗 Saída Manhã:</span>
+    <input type="time" id="manha-time-inp" value="${fmHH(cur)}" style="margin:0 6px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:0.82rem">
+    <button onclick="saveManhaStart()" style="padding:2px 8px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:0.78rem;cursor:pointer;font-weight:600">✓ Salvar</button>
+    <button onclick="clearManhaStart()" style="padding:2px 6px;background:transparent;border:1px solid #6b7280;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#6b7280;margin-left:4px" title="Restaurar 08:30">↩</button>`;
+  setTimeout(()=>document.getElementById('manha-time-inp')?.focus(),30);
+}
+function saveManhaStart(){
+  const plan=curPlan();if(!plan)return;
+  const val=document.getElementById('manha-time-inp')?.value;
+  if(!val)return;
+  const [h,m]=val.split(':').map(Number);
+  plan.manhaStart=h*60+m;
+  save();renderRoutePanels();
+  toast('Horário de saída atualizado ✓','ok');
+}
+function clearManhaStart(){
+  const plan=curPlan();if(!plan)return;
+  plan.manhaStart=null;
+  save();renderRoutePanels();
+}
 function renderRoutePanels(){
   const area=document.getElementById('routePanels');
   const hasRoute=!!curPlan();
@@ -1825,12 +1861,15 @@ function renderRoutePanels(){
     return;
   }
   const plan=curPlan();
-  const mStart=8*60+30;
+  const mStart=plan.manhaStart??8*60+30;
+  const _fmHHr=t=>String(Math.floor(t/60)).padStart(2,'0')+'h'+String(t%60).padStart(2,'0');
+  const manhaTitle='Manhã — '+_fmHHr(mStart);
   const morningEnd=routeEndTime(mStart,plan.manha);
   const _lunchBase=Math.max(12*60+30,morningEnd);
   const lunchStart=plan.lunchOverride!=null?plan.lunchOverride:_lunchBase;
   const afternoonStart=lunchStart+60;
   const lunch=lunchBannerHTML(morningEnd,plan);
+  const manhaBanner=manhaBannerHTML(plan);
   const tardeBase=plan.tardeBase||'CD';
   const tbLabels={'CD':'CD Galpão','Matriz':'Loja Matriz','Filial':'Loja Filial'};
   let tbBtns='';
@@ -1840,7 +1879,7 @@ function renderRoutePanels(){
   const tardeBaseExtra='<div class="tarde-base-sel" style="margin-top:4px">'+tbBtns+'</div>';
   // Garantir start/return nos períodos
   ['manha','tarde'].forEach(p=>{if(plan[p]&&plan[p].stops){normalizeStartStop(p);normalizeReturnStop(p);}});
-  area.innerHTML=`<div class="route-cols"><div id="pM">${panelHTML('manha',plan.manha,'Manhã — 08h30',mStart)}</div><div id="pT">${panelHTML('tarde',plan.tarde,'Tarde',afternoonStart,lunch,tardeBaseExtra)}</div></div>`;
+  area.innerHTML=`<div class="route-cols"><div id="pM">${panelHTML('manha',plan.manha,manhaTitle,mStart,manhaBanner)}</div><div id="pT">${panelHTML('tarde',plan.tarde,'Tarde',afternoonStart,lunch,tardeBaseExtra)}</div></div>`;
   initDrag();
 }
 
@@ -2192,17 +2231,19 @@ function ulDrop(e,per){
 function reRenderPanels(){
   const plan=curPlan();
   const pm=document.getElementById('pM'),pt=document.getElementById('pT');
-  const mStart=8*60+30;
+  const mStart=plan.manhaStart??8*60+30;
+  const _fmHHrr=t=>String(Math.floor(t/60)).padStart(2,'0')+'h'+String(t%60).padStart(2,'0');
   const morningEnd=routeEndTime(mStart,plan.manha);
   const _lunchBase2=Math.max(12*60+30,morningEnd);
   const lunchStart=plan.lunchOverride!=null?plan.lunchOverride:_lunchBase2;
   const lunch=lunchBannerHTML(morningEnd,plan);
+  const manhaBanner2=manhaBannerHTML(plan);
   const tardeBase=plan.tardeBase||'CD';
   const tbLabels={'CD':'CD Galpão','Matriz':'Loja Matriz','Filial':'Loja Filial'};
   let tbBtns='';
   ['CD','Matriz','Filial'].forEach(function(b){tbBtns+='<button class="tarde-base-btn'+(b===tardeBase?' active':'')+'" data-base="'+b+'" onclick="setTardeBase(this.dataset.base)">'+tbLabels[b]+'</button>';});
   const tardeBaseExtra='<div class="tarde-base-sel" style="margin-top:4px">'+tbBtns+'</div>';
-  if(pm)pm.innerHTML=panelHTML('manha',plan.manha,'Manhã — 08h30',mStart);
+  if(pm)pm.innerHTML=panelHTML('manha',plan.manha,'Manhã — '+_fmHHrr(mStart),mStart,manhaBanner2);
   if(pt)pt.innerHTML=panelHTML('tarde',plan.tarde,'Tarde',lunchStart+60,lunch,tardeBaseExtra);
   initDrag();
 }
@@ -5978,11 +6019,12 @@ function transfPanelHTML(per){
   function fmD(m){return(m/1000).toFixed(1).replace('.',',')+'km';}
   function fmT(s){const m=Math.round(s/60);if(m<60)return m+'min';return Math.floor(m/60)+'h'+(m%60?m%60+'min':'');}
   function fmHHMM(t){return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');}
-  const perStart=per==='manha'?8*60+30:13*60+30;
+  const perStart=per==='manha'?(plan.manhaStart??8*60+30):13*60+30;
   const fullStops=[{type:'start',key:startBase},...midStops,{type:'return',key:'CD'}];
   const legDurs=calc.legDurs||[],legDists=calc.legDists||[];
   const totalInfo=[midStops.length+' parada'+(midStops.length!==1?'s':''),calc.totalDist?fmD(calc.totalDist):'',calc.totalDur?fmT(calc.totalDur):''].filter(Boolean).join(' · ');
-  const perLabel=per==='manha'?'Manhã — 08h30':'Tarde — 13h30';
+  const _fmHHtc=t=>String(Math.floor(t/60)).padStart(2,'0')+'h'+String(t%60).padStart(2,'0');
+  const perLabel=per==='manha'?'Manhã — '+_fmHHtc(perStart):'Tarde — 13h30';
   const perColor=per==='manha'?'#d97706':'#0284c7';
   if(!midStops.length&&!editingTransfRoute){
     return '<div class="rpanel"><div class="rpanel-hdr"><h3 style="color:'+perColor+'">'+perLabel+'</h3></div><div style="color:#9ca3af;font-size:0.82rem;padding:16px 0 8px;text-align:center">Sem transfer\u00eancias neste per\u00edodo</div></div>';
