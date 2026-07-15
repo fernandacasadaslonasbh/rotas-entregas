@@ -1926,12 +1926,18 @@ function saveManhaStart(){
   const [h,m]=val.split(':').map(Number);
   plan.manhaStart=h*60+m;
   save();renderRoutePanels();
-  toast('Horário de saída atualizado ✓','ok');
+  toast('Horário de saída atualizado ✓ Recalculando...','ok');
+  if(plan.manha?.stops?.length>1){
+    recalcPer('manha').then(()=>{save();reRenderPanels();}).catch(e=>console.warn('saveManhaStart recalc:',e));
+  }
 }
 function clearManhaStart(){
   const plan=curPlan();if(!plan)return;
   plan.manhaStart=null;
   save();renderRoutePanels();
+  if(plan.manha?.stops?.length>1){
+    recalcPer('manha').then(()=>{save();reRenderPanels();}).catch(e=>console.warn('clearManhaStart recalc:',e));
+  }
 }
 function renderRoutePanels(){
   const area=document.getElementById('routePanels');
