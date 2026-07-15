@@ -2121,12 +2121,28 @@ async function recalcPer(perName){
   const perData=plan[perName];
   if(!perData.stops||perData.stops.length<2)return;
   const bc=getBC();
-  // Geocodificar custom stops com addr que ainda não têm coords
+  // Geocodificar todos os stops que precisam de coordenadas
   for(const s of perData.stops){
+    // Bases (start/return/pickup): garantir que bc[key] existe
+    if((s.type==='start'||s.type==='return'||s.type==='pickup')&&s.key&&BASES[s.key]&&!bc[s.key]){
+      try{const co=await geocode(BASES[s.key].addr);if(co){bc[s.key]=co;saveBC(bc);}}catch(e){}
+    }
+    // Entregas: geocodificar se não tiver coords
+    if(s.type==='delivery'&&s.id){
+      const _d=ST.deliveries.find(x=>x.id===s.id);
+      if(_d&&!_d.coords){
+        try{
+          let co=_d.mapsLink?coordsFromUrl(_d.mapsLink):null;
+          if(!co&&hasAddr(_d))co=await geocode(bAddr(_d));
+          if(co){_d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===s.id);if(idx>=0)ST.deliveries[idx].coords=co;}
+        }catch(e){}
+      }
+    }
+    // Custom stops sem coords
     if(s.type==='custom'&&s.addr&&!s.coords&&!s.key){
       try{const co=await geocode(s.addr);if(co)s.coords=co;}catch(e){}
     }
-    // Geocodificar ponto de destino de TC stops
+    // TC stops: garantir coords das bases
     if(s.type==='tc'){
       const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);
       if(_tc){for(const _k of [_tc.pontoDestino,_tc.pontoSaida]){if(_k&&_k!=='Cliente'&&BASES[_k]&&!bc[_k]){try{const co=await geocode(BASES[_k].addr);if(co){bc[_k]=co;saveBC(bc);}}catch(e){}}}}
