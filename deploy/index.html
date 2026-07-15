@@ -1173,7 +1173,7 @@ function _applyState(s){
   const _localTransfers=Array.isArray(ST.transfers)?[...ST.transfers]:[];
 
   ST.deliveries=Array.isArray(s.deliveries)?s.deliveries:[];
-  ST.selectedDate=s.selectedDate||null;
+  // selectedDate é local — cada usuário navega de forma independente (não sincroniza)
   ST.finalizedDates=Array.isArray(s.finalizedDates)?s.finalizedDates:[];
   if(s.routePlans&&typeof s.routePlans==='object')ST.routePlans=s.routePlans;
   ST.transfers=Array.isArray(s.transfers)?s.transfers:[];
@@ -1452,7 +1452,6 @@ function save(){
     // update() em vez de set() — preserva cdl_state/files/ que o set() apagaria
     const _upd={
       deliveries:ST.deliveries||[],
-      selectedDate:ST.selectedDate||null,
       finalizedDates:ST.finalizedDates||[],
       routePlans:ST.routePlans||{},
       transfers:ST.transfers||[],
