@@ -531,11 +531,37 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
   .transf-table{min-width:520px}
   .transf-resumo-card>div:first-child{flex-wrap:wrap!important}
 }
+#login-overlay{position:fixed;inset:0;background:#1e293b;display:flex;align-items:center;justify-content:center;z-index:99999;}
+#login-box{background:#fff;border-radius:16px;padding:40px 36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center;}
+#login-box h2{margin:0 0 4px;color:#1e293b;font-size:20px;font-weight:700;}
+#login-box p{color:#64748b;font-size:13px;margin:0 0 22px;}
+#login-box input{width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:10px;outline:none;transition:border .2s;}
+#login-box input:focus{border-color:#2563eb;}
+#login-btn{width:100%;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s;}
+#login-btn:hover{background:#1d4ed8;}
+#login-btn:disabled{background:#94a3b8;cursor:default;}
+#login-err{color:#ef4444;font-size:13px;margin-top:10px;min-height:16px;}
+.topbar-logout{background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;margin-left:8px;white-space:nowrap;}
+.topbar-logout:hover{background:rgba(255,255,255,.25);}
+.topbar-user{color:rgba(255,255,255,.75);font-size:12px;margin-left:8px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 </head>
 <body>
+<!-- Login Overlay -->
+<div id="login-overlay">
+  <div id="login-box">
+    <div style="font-size:40px;margin-bottom:12px">🚚</div>
+    <h2>Casa das Lonas</h2>
+    <p>Rotas de Entrega<br><span style="font-size:11px;color:#94a3b8">Acesso restrito — faça login para continuar</span></p>
+    <input id="login-email" type="email" placeholder="E-mail" autocomplete="email">
+    <input id="login-pass" type="password" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button id="login-btn" onclick="doLogin()">Entrar</button>
+    <div id="login-err"></div>
+  </div>
+</div>
 <div class="topbar">
   <button class="sb-toggle" onclick="toggleSidebar()" title="Menu">☰</button>
   <span class="topbar-brand">Rotas de Entrega – Casa das Lonas</span>
@@ -544,6 +570,10 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
     <button class="top-tab" id="tab-transf" onclick="switchTab('transf')">📋 Transferências</button>
     <button class="top-tab" id="tab-motorista" onclick="switchTab('motorista')">🚗 Motorista</button>
     <button class="top-tab" id="tab-admin" onclick="switchTab('admin')">⚙ Administrador</button>
+  </div>
+  <div id="topbar-user-info" style="display:none;align-items:center;">
+    <span class="topbar-user" id="topbar-email-label">👤</span>
+    <button class="topbar-logout" onclick="doLogout()">Sair</button>
   </div>
 </div>
 <div id="sb-overlay" class="sb-overlay" onclick="toggleSidebar()"></div>
@@ -1204,11 +1234,36 @@ function _applyState(s){
   // _savedAt permanece em ST.transfChecks para resolver conflitos futuros
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
+let _authInitialized=false;
+function doLogin(){
+  const email=(document.getElementById('login-email').value||'').trim();
+  const pass=document.getElementById('login-pass').value||'';
+  const btn=document.getElementById('login-btn');
+  const err=document.getElementById('login-err');
+  if(!email||!pass){err.textContent='Preencha e-mail e senha.';return;}
+  btn.disabled=true;btn.textContent='Entrando...';err.textContent='';
+  firebase.auth().signInWithEmailAndPassword(email,pass).catch(e=>{
+    btn.disabled=false;btn.textContent='Entrar';
+    const msgs={'auth/user-not-found':'Usuário não encontrado.','auth/wrong-password':'Senha incorreta.','auth/invalid-email':'E-mail inválido.','auth/invalid-credential':'E-mail ou senha incorretos.'};
+    err.textContent=msgs[e.code]||'Erro ao entrar. Tente novamente.';
+  });
+}
+function doLogout(){if(confirm('Deseja sair?'))firebase.auth().signOut();}
 function initFirebase(){
   try{
     if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
-    _fbDb=firebase.database();
-    _fbDb.ref('cdl_state').on('value',(snap)=>{
+    firebase.auth().onAuthStateChanged(user=>{
+      if(user){
+        document.getElementById('login-overlay').style.display='none';
+        const _ui=document.getElementById('topbar-user-info');
+        if(_ui)_ui.style.display='flex';
+        const _el=document.getElementById('topbar-email-label');
+        if(_el)_el.textContent='👤 '+(user.email||'');
+        if(_authInitialized)return;
+        _authInitialized=true;
+        _fbDb=firebase.database();
+        load();
+        _fbDb.ref('cdl_state').on('value',(snap)=>{
       if(_fbSaving||!snap.exists())return;
       _applyState(snap.val()); // Always update local state, even with modal open
       const modalOpen=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');
@@ -1308,6 +1363,15 @@ function initFirebase(){
       renderContent();
       toast('Sincronizado com a nuvem ☁️','ok');
     }).catch(e=>{toast('Erro Firebase: '+e.message,'err');});
+        renderSidebar();
+        renderContent();
+      } else {
+        _fbDb=null;_authInitialized=false;
+        document.getElementById('login-overlay').style.display='flex';
+        const _ui=document.getElementById('topbar-user-info');
+        if(_ui)_ui.style.display='none';
+      }
+    });
   }catch(e){console.warn('Firebase init error:',e);}
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5145,12 +5209,9 @@ async function inserirColetasERota(){
 }
 // Init
 initCustomBases();
-load();
-// Verificar se Maps está disponível via /api/maps, iniciar Firebase imediatamente
+// Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
 fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled)_mapsEnabled=true;}).catch(()=>{});
-renderSidebar();
-renderContent();
 document.getElementById('nomeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNome();});
 
 // ══════════════════════════════════════════════════════════════════════════════
