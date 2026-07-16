@@ -1927,16 +1927,22 @@ function saveManhaStart(){
   plan.manhaStart=h*60+m;
   save();renderRoutePanels();
   toast('Horário de saída atualizado ✓ Recalculando...','ok');
-  if(plan.manha?.stops?.length>1){
-    recalcPer('manha').then(()=>{save();reRenderPanels();}).catch(e=>console.warn('saveManhaStart recalc:',e));
+  const _recalcPers=[];
+  if(plan.manha?.stops?.length>1)_recalcPers.push('manha');
+  if(plan.tarde?.stops?.length>1&&!plan.tarde.totalDur)_recalcPers.push('tarde');
+  if(_recalcPers.length){
+    Promise.all(_recalcPers.map(p=>recalcPer(p))).then(()=>{save();reRenderPanels();}).catch(e=>console.warn('saveManhaStart recalc:',e));
   }
 }
 function clearManhaStart(){
   const plan=curPlan();if(!plan)return;
   plan.manhaStart=null;
   save();renderRoutePanels();
-  if(plan.manha?.stops?.length>1){
-    recalcPer('manha').then(()=>{save();reRenderPanels();}).catch(e=>console.warn('clearManhaStart recalc:',e));
+  const _recalcPers2=[];
+  if(plan.manha?.stops?.length>1)_recalcPers2.push('manha');
+  if(plan.tarde?.stops?.length>1&&!plan.tarde.totalDur)_recalcPers2.push('tarde');
+  if(_recalcPers2.length){
+    Promise.all(_recalcPers2.map(p=>recalcPer(p))).then(()=>{save();reRenderPanels();}).catch(e=>console.warn('clearManhaStart recalc:',e));
   }
 }
 function renderRoutePanels(){
@@ -2148,14 +2154,27 @@ async function recalcPer(perName){
       if(_tc){for(const _k of [_tc.pontoDestino,_tc.pontoSaida]){if(_k&&_k!=='Cliente'&&BASES[_k]&&!bc[_k]){try{const co=await geocode(BASES[_k].addr);if(co){bc[_k]=co;saveBC(bc);}}catch(e){}}}}
     }
   }
-  const pts=perData.stops.map(s=>{
-    if(s.type==='start'||s.type==='pickup'||s.type==='return')return bc[s.key];
-    if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);return d?.coords;}
-    if(s.type==='custom'){if(s.key&&bc[s.key])return bc[s.key];if(s.coords)return s.coords;}
-    if(s.type==='tc'){const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!_tc)return null;const _d=_tc.pontoDestino;if(_d&&_d!=='Cliente'&&bc[_d])return bc[_d];return null;}
+  // Build pts array — one entry per stop (preserva alinhamento com legDurs)
+  const ptsRaw=perData.stops.map(s=>{
+    if(s.type==='start'||s.type==='pickup'||s.type==='return')return bc[s.key]||null;
+    if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);return d?.coords||null;}
+    if(s.type==='custom'){if(s.key&&bc[s.key])return bc[s.key];if(s.coords)return s.coords;return null;}
+    if(s.type==='tc'){
+      const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!_tc)return null;
+      const _d=_tc.pontoDestino,_src=_tc.pontoSaida;
+      // Tenta destino; se for Cliente, usa origem (base de coleta)
+      if(_d&&_d!=='Cliente'&&bc[_d])return bc[_d];
+      if(_src&&_src!=='Cliente'&&bc[_src])return bc[_src];
+      return null;
+    }
     return null;
-  }).filter(Boolean);
-  if(pts.length<2)return;
+  });
+  // Preenche nulls com coordenada vizinha (forward então backward)
+  // Garante que legDurs[i-1] em panelHTML sempre corresponde ao trecho correto
+  {let _v=null;for(let i=0;i<ptsRaw.length;i++){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
+  {let _v=null;for(let i=ptsRaw.length-1;i>=0;i--){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
+  const pts=ptsRaw;
+  if(pts.filter(Boolean).length<2)return;
   const hasReturn=perData.stops[perData.stops.length-1]?.type==='return';
   const ptsMain=hasReturn?pts.slice(0,-1):pts;
   const retPt=hasReturn?pts[pts.length-1]:null;
