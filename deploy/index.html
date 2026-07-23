@@ -7303,7 +7303,7 @@ function _getSectionRows(date, loc, type, opts){
     // Produtos de entrega só vão para Transferências se a origem for CD
     // (Matriz/Filial ficam a cargo do card TC vinculado)
     if(loc==='CD'){
-      (ST.deliveries||[]).filter(d=>d.data===date).forEach(d=>{
+      (ST.deliveries||[]).filter(d=>d.data===date&&d.status!=='reserva').forEach(d=>{
         (d.produtos||[]).filter(p=>p.origem==='CD').forEach((p,i)=>{
           base.push({tcId:'deliv-'+d.id, prodIdx:i, sku:p.sku||'', nome:p.nome||p.sku||'',
             qtd:p.qtd||1, origem:'CD', destFisico:'Cliente',
