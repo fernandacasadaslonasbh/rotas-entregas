@@ -5347,7 +5347,7 @@ async function inserirColetasERota(){
 }
 // Init
 initCustomBases();
-// Verificação de nova versão — polling a cada 5 minutos
+// Verificação de nova versão — polling a cada 1 minuto
 (function _startVersionCheck(){
   let _currentBuild=null;
   function _checkVersion(){
@@ -5363,7 +5363,7 @@ initCustomBases();
       .catch(()=>{}); // silencioso em caso de erro de rede
   }
   _checkVersion(); // checa imediatamente no boot
-  setInterval(_checkVersion, 5*60*1000); // depois a cada 5 minutos
+  setInterval(_checkVersion, 1*60*1000); // depois a cada 1 minuto
 })();
 // Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
