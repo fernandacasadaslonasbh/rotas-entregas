@@ -551,6 +551,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 </head>
 <body>
 <!-- Login Overlay -->
+<button id="update-banner" onclick="location.reload(true)" title="Clique para carregar a versão nova">🔄 Nova versão disponível — toque para atualizar</button>
 <div id="login-overlay">
   <div id="login-box">
     <div style="font-size:40px;margin-bottom:12px">🚚</div>
@@ -5346,6 +5347,24 @@ async function inserirColetasERota(){
 }
 // Init
 initCustomBases();
+// Verificação de nova versão — polling a cada 5 minutos
+(function _startVersionCheck(){
+  let _currentBuild=null;
+  function _checkVersion(){
+    fetch('/version.json?_='+Date.now(),{cache:'no-store'})
+      .then(r=>r.json())
+      .then(data=>{
+        if(!data||!data.build)return;
+        if(!_currentBuild){_currentBuild=data.build;return;} // primeira leitura: grava silenciosamente
+        if(data.build!==_currentBuild){
+          document.getElementById('update-banner').style.display='block';
+        }
+      })
+      .catch(()=>{}); // silencioso em caso de erro de rede
+  }
+  _checkVersion(); // checa imediatamente no boot
+  setInterval(_checkVersion, 5*60*1000); // depois a cada 5 minutos
+})();
 // Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
 fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled)_mapsEnabled=true;}).catch(()=>{});
@@ -8189,6 +8208,12 @@ function imprimirSecao(date, loc, type, apenasNaoConferidos){
     tr:nth-child(even) td{background:#fafafa}
     .check-col{text-align:center}
     @media print{body{margin:10px}button{display:none}}
+    #update-banner{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+      background:#1e40af;color:#fff;padding:12px 24px;border-radius:12px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;cursor:pointer;
+      font-size:0.9rem;font-weight:600;white-space:nowrap;border:none;
+      animation:slideUp 0.4s ease}
+    @keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
   </style>
   </head><body>
   <button onclick="window.print()" style="margin-bottom:12px;padding:6px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🖨 Imprimir</button>
