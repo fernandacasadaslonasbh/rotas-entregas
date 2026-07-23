@@ -551,7 +551,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 </head>
 <body>
 <!-- Login Overlay -->
-<button id="update-banner" onclick="location.reload(true)" title="Clique para carregar a versão nova">🔄 Nova versão disponível — toque para atualizar</button>
+<div id="update-banner-wrap"><button onclick="location.reload(true)">🔄 Nova versão disponível — toque para atualizar</button><button class="upd-close" onclick="document.getElementById('update-banner-wrap').style.display='none';sessionStorage.setItem('upd-dismissed',_currentBuild||'')" title="Fechar">✕</button></div>
 <div id="login-overlay">
   <div id="login-box">
     <div style="font-size:40px;margin-bottom:12px">🚚</div>
@@ -5357,7 +5357,11 @@ initCustomBases();
         if(!data||!data.build)return;
         if(!_currentBuild){_currentBuild=data.build;return;} // primeira leitura: grava silenciosamente
         if(data.build!==_currentBuild){
-          document.getElementById('update-banner').style.display='block';
+          // Só mostra se o usuário não fechou manualmente essa mesma versão
+          if(sessionStorage.getItem('upd-dismissed')!==data.build){
+            const w=document.getElementById('update-banner-wrap');
+            if(w){w.style.display='flex';}
+          }
         }
       })
       .catch(()=>{}); // silencioso em caso de erro de rede
@@ -8208,12 +8212,15 @@ function imprimirSecao(date, loc, type, apenasNaoConferidos){
     tr:nth-child(even) td{background:#fafafa}
     .check-col{text-align:center}
     @media print{body{margin:10px}button{display:none}}
-    #update-banner{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-      background:#1e40af;color:#fff;padding:12px 24px;border-radius:12px;
-      box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;cursor:pointer;
-      font-size:0.9rem;font-weight:600;white-space:nowrap;border:none;
-      animation:slideUp 0.4s ease}
-    @keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+    #update-banner-wrap{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:#1e40af;color:#fff;padding:10px 20px;border-radius:14px;
+      box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;
+      font-size:0.88rem;font-weight:600;white-space:nowrap;
+      display:none;align-items:center;gap:12px;
+      animation:slideUpBanner 0.4s ease}
+    @keyframes slideUpBanner{from{opacity:0;bottom:0}to{opacity:1;bottom:24px}}
+    #update-banner-wrap button{background:none;border:none;color:#fff;cursor:pointer;font-size:0.88rem;font-weight:600;padding:0}
+    #update-banner-wrap .upd-close{font-size:1.1rem;opacity:0.8;padding:0 2px}
   </style>
   </head><body>
   <button onclick="window.print()" style="margin-bottom:12px;padding:6px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🖨 Imprimir</button>
