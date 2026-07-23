@@ -551,7 +551,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 </head>
 <body>
 <!-- Login Overlay -->
-<div id="update-banner-wrap"><button onclick="location.reload(true)">🔄 Nova versão disponível — toque para atualizar</button><button class="upd-close" onclick="document.getElementById('update-banner-wrap').style.display='none';sessionStorage.setItem('upd-dismissed',_currentBuild||'')" title="Fechar">✕</button></div>
+<div id="update-banner-wrap"><button onclick="location.reload(true)">🔄 Nova versão disponível — toque para atualizar</button><button class="upd-close" onclick="_dismissBanner()" title="Fechar">✕</button></div>
 <div id="login-overlay">
   <div id="login-box">
     <div style="font-size:40px;margin-bottom:12px">🚚</div>
@@ -5348,26 +5348,32 @@ async function inserirColetasERota(){
 // Init
 initCustomBases();
 // Verificação de nova versão — polling a cada 1 minuto
-let _currentBuild=null;
+let _currentBuild=null,_latestBuild=null;
+function _dismissBanner(){
+  const w=document.getElementById('update-banner-wrap');
+  if(w)w.style.display='none';
+  // Grava a versão NOVA (não a atual carregada) para que o check reconheça como "já dispensado"
+  if(_latestBuild)sessionStorage.setItem('upd-dismissed',_latestBuild);
+}
 (function _startVersionCheck(){
   function _checkVersion(){
     fetch('/version.json?_='+Date.now(),{cache:'no-store'})
       .then(r=>r.json())
       .then(data=>{
         if(!data||!data.build)return;
-        if(!_currentBuild){_currentBuild=data.build;return;} // primeira leitura: grava silenciosamente
+        if(!_currentBuild){_currentBuild=data.build;return;} // primeira leitura: registra versão atual silenciosamente
         if(data.build!==_currentBuild){
-          // Só mostra se o usuário não fechou manualmente essa mesma versão
+          _latestBuild=data.build; // guarda a versão nova para o botão fechar usar
           if(sessionStorage.getItem('upd-dismissed')!==data.build){
             const w=document.getElementById('update-banner-wrap');
-            if(w){w.style.display='flex';}
+            if(w)w.style.display='flex';
           }
         }
       })
-      .catch(()=>{}); // silencioso em caso de erro de rede
+      .catch(()=>{});
   }
-  _checkVersion(); // checa imediatamente no boot
-  setInterval(_checkVersion, 1*60*1000); // depois a cada 1 minuto
+  _checkVersion();
+  setInterval(_checkVersion,5*60*1000); // a cada 5 minutos
 })();
 // Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
@@ -8212,7 +8218,7 @@ function imprimirSecao(date, loc, type, apenasNaoConferidos){
     tr:nth-child(even) td{background:#fafafa}
     .check-col{text-align:center}
     @media print{body{margin:10px}button{display:none}}
-    #update-banner-wrap{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    #update-banner-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
       background:#1e40af;color:#fff;padding:10px 20px;border-radius:14px;
       box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;
       font-size:0.88rem;font-weight:600;white-space:nowrap;
