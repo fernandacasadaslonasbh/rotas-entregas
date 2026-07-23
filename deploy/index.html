@@ -5348,8 +5348,8 @@ async function inserirColetasERota(){
 // Init
 initCustomBases();
 // Verificação de nova versão — polling a cada 1 minuto
+let _currentBuild=null;
 (function _startVersionCheck(){
-  let _currentBuild=null;
   function _checkVersion(){
     fetch('/version.json?_='+Date.now(),{cache:'no-store'})
       .then(r=>r.json())
