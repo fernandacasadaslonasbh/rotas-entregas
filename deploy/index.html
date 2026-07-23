@@ -1151,7 +1151,7 @@ let FIREBASE_CONFIG={
   messagingSenderId:"369644629225",
   appId:"1:369644629225:web:120978c64bf8447469d478"
 };
-let _fbDb=null,_fbSaving=false;
+let _fbDb=null,_fbSaving=false,_pendingExternalState=null;
 function _applyState(s){
   // Preservar campos locais que nunca devem ser sobrescritos por estado desatualizado de outro usuário
   // 1) driverStatus — atualizado pelo motorista
@@ -1165,6 +1165,7 @@ function _applyState(s){
   const _localFinal=new Set(Array.isArray(ST.finalizedDates)?ST.finalizedDates:[]);
   // 3) transfChecks — captura estado local antes de aplicar servidor
   const _localChecks=JSON.parse(JSON.stringify(ST.transfChecks||{}));
+  const _localLocEdits=JSON.parse(JSON.stringify(ST.transfLocEdits||{}));
   // 4b) tombstones — IDs deletados localmente nunca voltam
   const _localDelTc=new Set(ST.deletedTcIds||[]);
   const _localDelDel=new Set(ST.deletedDeliveryIds||[]);
@@ -1195,11 +1196,49 @@ function _applyState(s){
     // else: local mais novo, mantém
   });
   ST.deliveries=Object.values(_mergedDels);
-  // TRANSFERS: mesma lógica (union + tombstone)
-  ST.transfers=Array.isArray(s.transfers)?s.transfers:[];
-  ST.transfers=ST.transfers.filter(t=>!_delTcSet.has(t.id));
-  const _srvTcIds=new Set((ST.transfers||[]).map(t=>t.id).filter(Boolean));
-  _localTransfers.forEach(t=>{if(t.id&&!_srvTcIds.has(t.id)&&!_delTcSet.has(t.id))ST.transfers.push(t);});
+  // Se alguma entrega local é mais nova que o servidor, corrige o Firebase
+  // (evita que outro cliente com dados antigos sobrescreva uma edição recente)
+  if(_fbDb&&!_fbSaving){
+    let _needsCorrection=false;
+    (Array.isArray(s.deliveries)?s.deliveries:[]).forEach(d=>{
+      if(!d.id||_delDelSet.has(d.id))return;
+      const _merged=_mergedDels[d.id];if(!_merged)return;
+      const _sTs=d.updatedAt||d.createdAt||'';
+      const _mTs=_merged.updatedAt||_merged.createdAt||'';
+      if(_mTs>_sTs)_needsCorrection=true;
+    });
+    if(_needsCorrection){
+      // Empurra array corrigido ao Firebase após pequeno delay para evitar loop
+      setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/deliveries').set(Object.values(_mergedDels)).catch(()=>{});},1200);
+    }
+  }
+  // TRANSFERS: merge por ID mantendo versão mais recente (mesma lógica das entregas)
+  const _mergedTcs={};
+  _localTransfers.forEach(t=>{if(t.id&&!_delTcSet.has(t.id))_mergedTcs[t.id]=t;});
+  (Array.isArray(s.transfers)?s.transfers:[]).forEach(t=>{
+    if(!t.id||_delTcSet.has(t.id))return;
+    const _locTc=_mergedTcs[t.id];
+    if(!_locTc){_mergedTcs[t.id]=t;return;}
+    const _sTsTc=t.updatedAt||t.createdAt||'';
+    const _lTsTc=_locTc.updatedAt||_locTc.createdAt||'';
+    if(_sTsTc>=_lTsTc)_mergedTcs[t.id]=t; // servidor igual ou mais novo
+    // else: local mais novo, mantém
+  });
+  ST.transfers=Object.values(_mergedTcs);
+  // Auto-correção: se local tem transferência mais nova, empurra de volta ao Firebase
+  if(_fbDb&&!_fbSaving){
+    let _tcNeedsCorr=false;
+    (Array.isArray(s.transfers)?s.transfers:[]).forEach(t=>{
+      if(!t.id||_delTcSet.has(t.id))return;
+      const _merged=_mergedTcs[t.id];if(!_merged)return;
+      const _sTs2=t.updatedAt||t.createdAt||'';
+      const _mTs2=_merged.updatedAt||_merged.createdAt||'';
+      if(_mTs2>_sTs2)_tcNeedsCorr=true;
+    });
+    if(_tcNeedsCorr){
+      setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/transfers').set(Object.values(_mergedTcs)).catch(()=>{});},1500);
+    }
+  }
   // ROUTE PLANS: merge por data com _savedAt — evita overwrite de plano mais recente
   if(s.routePlans&&typeof s.routePlans==='object'){
     Object.keys(s.routePlans).forEach(date=>{
@@ -1220,7 +1259,28 @@ function _applyState(s){
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
   if(s.routePlan&&s.routePlan.date&&s.routePlan.manha)ST.routePlans[s.routePlan.date]=s.routePlan;
   if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
-  if(s.transfLocEdits&&typeof s.transfLocEdits==='object')ST.transfLocEdits=s.transfLocEdits;
+  if(s.transfLocEdits&&typeof s.transfLocEdits==='object'){
+    ST.transfLocEdits=s.transfLocEdits;
+    // Merge: mantém versão local se for mais recente que o servidor (por _savedAt)
+    Object.keys(_localLocEdits).forEach(date=>{
+      if(!ST.transfLocEdits[date]){ST.transfLocEdits[date]=_localLocEdits[date];return;}
+      const _lLeTs=_localLocEdits[date]._savedAt||'';
+      const _sLeTs=ST.transfLocEdits[date]._savedAt||'';
+      if(_lLeTs>_sLeTs)ST.transfLocEdits[date]=_localLocEdits[date];
+    });
+  } else { ST.transfLocEdits=_localLocEdits; }
+  // Auto-correção transfLocEdits: se local tem versão mais nova, empurra ao Firebase
+  if(_fbDb&&!_fbSaving&&s.transfLocEdits&&typeof s.transfLocEdits==='object'){
+    let _leNeedsCorr=false;
+    Object.keys(ST.transfLocEdits||{}).forEach(date=>{
+      const _lLeTs2=ST.transfLocEdits[date]?._savedAt||'';
+      const _sLeTs2=(s.transfLocEdits||{})[date]?._savedAt||'';
+      if(_lLeTs2>_sLeTs2)_leNeedsCorr=true;
+    });
+    if(_leNeedsCorr){
+      setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/transfLocEdits').set(ST.transfLocEdits||{}).catch(()=>{});},1800);
+    }
+  }
 
   // Mesclar driverStatus: usa progressão de status + timestamp para decidir qual é mais recente
   // (evita que save do admin sobrescreva atualização do motorista, e vice-versa)
@@ -1289,7 +1349,12 @@ function initFirebase(){
         _fbDb=firebase.database();
         load();
         _fbDb.ref('cdl_state').on('value',(snap)=>{
-      if(_fbSaving||!snap.exists())return;
+      if(!snap.exists())return;
+      if(_fbSaving){
+        _pendingExternalState=snap.val(); // Enfileira — processa após save completar
+        return;
+      }
+      _pendingExternalState=null;
       _applyState(snap.val()); // Always update local state, even with modal open
       const modalOpen=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');
       if(modalOpen)return; // Don't re-render while user has a modal open
@@ -1492,7 +1557,7 @@ function save(){
       Object.keys(ST.routePlans||{}).forEach(dt=>{if(ST.routePlans[dt])ST.routePlans[dt]._savedAt=_now2;});
       _upd.routePlans=ST.routePlans||{};
     }
-    _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
+    _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;if(_pendingExternalState){const _ps=_pendingExternalState;_pendingExternalState=null;_applyState(_ps);const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');if(!_mo){renderSidebar();renderContent();}}},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
     // Grava driverStatus no caminho dedicado — com _savedAt para resolver conflitos por timestamp
     const _dsTs={};const _now=new Date().toISOString();
     Object.keys(ST.routePlans||{}).forEach(date=>{
@@ -3083,9 +3148,9 @@ function saveCard(){
     const idx=ST.deliveries.findIndex(x=>x.id===editId);
     if(idx>=0){const p=ST.deliveries[idx];if(bAddr(p)!==bAddr(data))data.coords=null;
       const hist=[...(p.historico||[]),{nome:autor,em:hoje+' '+now,tipo:'alteração'}];
-      ST.deliveries[idx]={...p,...data,historico:hist};}
+      ST.deliveries[idx]={...p,...data,historico:hist,updatedAt:new Date().toISOString(),updatedBy:autor};}
   }else{
-    ST.deliveries.push({id:editId,coords:null,...data,historico:[{nome:autor,em:hoje+' '+now,tipo:'criação'}]});
+    const _nowIso=new Date().toISOString();ST.deliveries.push({id:editId,coords:null,...data,historico:[{nome:autor,em:hoje+' '+now,tipo:'criação'}],createdAt:_nowIso,updatedAt:_nowIso,createdBy:autor});
     newCard=false;
   }
   if(!ST.selectedDate&&data.data)ST.selectedDate=data.data;
@@ -5951,7 +6016,7 @@ function saveTcCard(){
   if(!tcNewCard){
     // Editing existing — just update
     const idx=ST.transfers.findIndex(x=>x.id===tcEditId);
-    if(idx>=0)ST.transfers[idx]={...ST.transfers[idx],...rec,historico:[...(ST.transfers[idx].historico||[]),{nome:autor,em:hoje+' '+now,tipo:'alteração'}]};
+    if(idx>=0)ST.transfers[idx]={...ST.transfers[idx],...rec,historico:[...(ST.transfers[idx].historico||[]),{nome:autor,em:hoje+' '+now,tipo:'alteração'}],updatedAt:new Date().toISOString(),updatedBy:autor};
     if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
     save();closeTcForm();renderSidebar();
     if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
@@ -5979,7 +6044,7 @@ function saveTcCard(){
 }
 let _pendingTcRec=null,_pendingTcExistId=null,_pendingTcAutor='',_pendingTcNow='';
 function _doCreateTcCard(rec,autor,stamp){
-  ST.transfers.push({...rec,historico:[{nome:autor,em:stamp,tipo:'criação'}]});
+  const _nowIsoTc=new Date().toISOString();ST.transfers.push({...rec,historico:[{nome:autor,em:stamp,tipo:'criação'}],createdAt:_nowIsoTc,updatedAt:_nowIsoTc,createdBy:autor});
   if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
   save();closeTcForm();renderSidebar();
   if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
@@ -6688,7 +6753,9 @@ function _resumoOverrides(date){ return ((ST.transfLocEdits||{})[date]||{})['__r
 function _saveResumoOverrides(date, obj){
   if(!ST.transfLocEdits) ST.transfLocEdits={};
   if(!ST.transfLocEdits[date]) ST.transfLocEdits[date]={};
-  ST.transfLocEdits[date]['__resumo__']=obj; save();
+  ST.transfLocEdits[date]['__resumo__']=obj;
+  ST.transfLocEdits[date]._savedAt=new Date().toISOString();
+  save();
 }
 function openResumoEditModal(date, orig, nota){
   document.getElementById('resumoEditOverlay')?.remove();
@@ -7173,6 +7240,7 @@ function saveTransfRowEdit(date, tcId, prodIdx, type){
   const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const hoje=new Date().toLocaleDateString('pt-BR');
   tc.historico=[...(tc.historico||[]),{nome:autor,em:hoje+' '+now,tipo:'edição via Transferências'}];
+  tc.updatedAt=new Date().toISOString();tc.updatedBy=autor;
   save();
   document.getElementById('transfEditOverlay').remove();
   renderTransfTab();
@@ -7712,6 +7780,7 @@ function saveSectionEdit(date, loc, type, origRows){
   // extras: substitui completamente (allExtras já contém todos os extras válidos)
   const allLog=[...(prev.changelog||[]),...changelog];
   ST.transfLocEdits[date][loc+'__'+type]={autor, removed:allRemoved, extras:allExtras, changelog:allLog};
+  ST.transfLocEdits[date]._savedAt=new Date().toISOString();
   save();
   document.getElementById('sectionEditOverlay')?.remove();
   renderTransfTab();
