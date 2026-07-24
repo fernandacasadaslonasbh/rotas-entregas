@@ -6517,6 +6517,7 @@ function renderTransfPanels(){
 
 let _transfSub = 'Matriz';
 let _transfDate = null;
+let _transfHistOpen = false; // seção Histórico recolhida por padrão
 
 function _transfDates(){
   // Returns sorted unique dates from ST.transfers that have products,
@@ -6587,35 +6588,42 @@ function _renderTransfSidebar(dates){
     </div>`;
   });
 
-  // History section
+  // History section — collapsible
   if(finalized.length){
-    html += `<div style="margin-top:14px;margin-bottom:6px;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;padding:0 2px">Histórico</div>`;
-    finalized.forEach(d=>{
-      const parts = d.split('-');
-      const label = parts.length===3 ? parts[2]+'/'+parts[1] : d;
-      const isSel = d===_transfDate;
-      const fid='tsbf_'+d.replace(/-/g,'');
-      html += `<div style="position:relative;margin-bottom:3px">
-        <button class="transf-date-btn${isSel?' active':''}" onclick="_selectTransfDate('${d}')"
-          style="width:100%;padding-right:22px;opacity:.7;font-style:italic">${label}</button>
-        <button onclick="event.stopPropagation();_toggleTransfMenu('${fid}')"
-          style="position:absolute;right:2px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;color:#6b7280;font-size:15px;line-height:1;padding:1px 4px;border-radius:4px"
-          onmouseenter="this.style.background='#e5e7eb'" onmouseleave="this.style.background='none'">&#8943;</button>
-        <div id="${fid}" style="display:none;position:absolute;right:0;top:100%;z-index:200;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);min-width:140px;overflow:hidden">
-          <button onclick="event.stopPropagation();_closeTransfMenus();_reativarTransfDia('${d}')"
-            style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;cursor:pointer;font-size:12px;color:#374151;font-weight:600"
-            onmouseenter="this.style.background='#f3f4f6'" onmouseleave="this.style.background='none'">&#8617; Reativar dia</button>
-          <button onclick="event.stopPropagation();_closeTransfMenus();_excluirTransfDia('${d}')"
-            style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;cursor:pointer;font-size:12px;color:#dc2626;font-weight:600"
-            onmouseenter="this.style.background='#fef2f2'" onmouseleave="this.style.background='none'">&#128465; Excluir dia</button>
-        </div>
-      </div>`;
-    });
+    const arrow = _transfHistOpen ? '▲' : '▼';
+    html += `<button onclick="_toggleTransfHist()" style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:14px;margin-bottom:${_transfHistOpen?'6':'2'}px;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;padding:3px 2px;border:none;background:none;cursor:pointer;border-radius:4px" onmouseenter="this.style.background='#e5e7eb'" onmouseleave="this.style.background='none'"><span>Histórico</span><span style="font-size:8px">${arrow}</span></button>`;
+    if(_transfHistOpen){
+      finalized.forEach(d=>{
+        const parts = d.split('-');
+        const label = parts.length===3 ? parts[2]+'/'+parts[1] : d;
+        const isSel = d===_transfDate;
+        const fid='tsbf_'+d.replace(/-/g,'');
+        html += `<div style="position:relative;margin-bottom:3px">
+          <button class="transf-date-btn${isSel?' active':''}" onclick="_selectTransfDate('${d}')"
+            style="width:100%;padding-right:22px;opacity:.7;font-style:italic">${label}</button>
+          <button onclick="event.stopPropagation();_toggleTransfMenu('${fid}')"
+            style="position:absolute;right:2px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;color:#6b7280;font-size:15px;line-height:1;padding:1px 4px;border-radius:4px"
+            onmouseenter="this.style.background='#e5e7eb'" onmouseleave="this.style.background='none'">&#8943;</button>
+          <div id="${fid}" style="display:none;position:absolute;right:0;top:100%;z-index:200;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);min-width:140px;overflow:hidden">
+            <button onclick="event.stopPropagation();_closeTransfMenus();_reativarTransfDia('${d}')"
+              style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;cursor:pointer;font-size:12px;color:#374151;font-weight:600"
+              onmouseenter="this.style.background='#f3f4f6'" onmouseleave="this.style.background='none'">&#8617; Reativar dia</button>
+            <button onclick="event.stopPropagation();_closeTransfMenus();_excluirTransfDia('${d}')"
+              style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;cursor:pointer;font-size:12px;color:#dc2626;font-weight:600"
+              onmouseenter="this.style.background='#fef2f2'" onmouseleave="this.style.background='none'">&#128465; Excluir dia</button>
+          </div>
+        </div>`;
+      });
+    }
   }
 
   el.innerHTML = html;
 }
 
+function _toggleTransfHist(){
+  _transfHistOpen=!_transfHistOpen;
+  _renderTransfSidebar(_transfDates());
+}
 function _finalizarTransfDia(date){
   if(!confirm('Finalizar o dia '+date.split('-').reverse().join('/')+'?\nEle sera movido para o Historico.')) return;
   if(!ST.finalizedDates) ST.finalizedDates=[];
@@ -6665,6 +6673,9 @@ function _excluirTransfDia(date){
 
 function _selectTransfDate(d){
   _transfDate = d;
+  // Se o dia selecionado é histórico, abre a seção
+  const fin=new Set(ST.finalizedDates||[]);
+  if(fin.has(d))_transfHistOpen=true;
   const dates = _transfDates();
   _renderTransfSidebar(dates);
   _renderTransfContent();
