@@ -570,7 +570,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 </head>
 <body>
 <!-- Login Overlay -->
-<div id="update-banner-wrap"><button onclick="location.reload(true)">🔄 Nova versão disponível — toque para atualizar</button><button class="upd-close" onclick="_dismissBanner()" title="Fechar">✕</button></div>
+
 <div id="login-overlay">
   <div id="login-box">
     <div style="font-size:40px;margin-bottom:12px">🚚</div>
@@ -5471,34 +5471,7 @@ async function inserirColetasERota(){
 }
 // Init
 initCustomBases();
-// Verificação de nova versão — polling a cada 1 minuto
-let _currentBuild=null,_latestBuild=null;
-function _dismissBanner(){
-  const w=document.getElementById('update-banner-wrap');
-  if(w)w.style.display='none';
-  // Grava a versão NOVA (não a atual carregada) para que o check reconheça como "já dispensado"
-  if(_latestBuild)sessionStorage.setItem('upd-dismissed',_latestBuild);
-}
-(function _startVersionCheck(){
-  function _checkVersion(){
-    fetch('/version.json?_='+Date.now(),{cache:'no-store'})
-      .then(r=>r.json())
-      .then(data=>{
-        if(!data||!data.build)return;
-        if(!_currentBuild){_currentBuild=data.build;return;} // primeira leitura: registra versão atual silenciosamente
-        if(data.build!==_currentBuild){
-          _latestBuild=data.build; // guarda a versão nova para o botão fechar usar
-          if(sessionStorage.getItem('upd-dismissed')!==data.build){
-            const w=document.getElementById('update-banner-wrap');
-            if(w)w.style.display='flex';
-          }
-        }
-      })
-      .catch(()=>{});
-  }
-  _checkVersion();
-  setInterval(_checkVersion,5*60*1000); // a cada 5 minutos
-})();
+
 // Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
 fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled)_mapsEnabled=true;}).catch(()=>{});
@@ -8371,15 +8344,7 @@ function imprimirSecao(date, loc, type, apenasNaoConferidos){
     tr:nth-child(even) td{background:#fafafa}
     .check-col{text-align:center}
     @media print{body{margin:10px}button{display:none}}
-    #update-banner-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-      background:#1e40af;color:#fff;padding:10px 20px;border-radius:14px;
-      box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;
-      font-size:0.88rem;font-weight:600;white-space:nowrap;
-      display:none;align-items:center;gap:12px;
-      animation:slideUpBanner 0.4s ease}
-    @keyframes slideUpBanner{from{opacity:0;bottom:0}to{opacity:1;bottom:24px}}
-    #update-banner-wrap button{background:none;border:none;color:#fff;cursor:pointer;font-size:0.88rem;font-weight:600;padding:0}
-    #update-banner-wrap .upd-close{font-size:1.1rem;opacity:0.8;padding:0 2px}
+
   </style>
   </head><body>
   <button onclick="window.print()" style="margin-bottom:12px;padding:6px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🖨 Imprimir</button>
