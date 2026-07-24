@@ -543,6 +543,25 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 #login-err{color:#ef4444;font-size:13px;margin-top:10px;min-height:16px;}
 .topbar-logout{background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;margin-left:8px;white-space:nowrap;}
 .topbar-logout:hover{background:rgba(255,255,255,.25);}
+.btn-history{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:600;}
+.btn-history:hover{background:rgba(255,255,255,.25);}
+#historyModal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9800;display:none;align-items:flex-start;justify-content:flex-end;padding:60px 16px 16px;}
+.hist-panel{background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.2);width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;}
+.hist-header{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid #e5e7eb;background:#f8fafc;border-radius:14px 14px 0 0;}
+.hist-header h3{margin:0;flex:1;font-size:0.97rem;color:#1e293b;}
+.hist-body{overflow-y:auto;flex:1;padding:0;}
+.hist-entry{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid #f1f5f9;align-items:flex-start;}
+.hist-entry:last-child{border-bottom:none;}
+.hist-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;}
+.hist-dot-card{background:#3b82f6;}
+.hist-dot-status{background:#22c55e;}
+.hist-dot-rota{background:#f59e0b;}
+.hist-dot-transf{background:#8b5cf6;}
+.hist-dot-sistema{background:#94a3b8;}
+.hist-time{font-size:0.75rem;color:#94a3b8;white-space:nowrap;font-variant-numeric:tabular-nums;min-width:42px;}
+.hist-user{font-size:0.8rem;font-weight:700;color:#374151;margin-right:4px;}
+.hist-desc{font-size:0.8rem;color:#6b7280;flex:1;}
+.hist-empty{padding:32px;text-align:center;color:#9ca3af;font-size:0.85rem;}
 .topbar-user{color:rgba(255,255,255,.75);font-size:12px;margin-left:8px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -572,8 +591,9 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
     <button class="top-tab" id="tab-motorista" onclick="switchTab('motorista')">🚗 Motorista</button>
     <button class="top-tab" id="tab-admin" onclick="switchTab('admin')">⚙ Administrador</button>
   </div>
-  <div id="topbar-user-info" style="display:none;align-items:center;">
+  <div id="topbar-user-info" style="display:none;align-items:center;gap:6px;">
     <span class="topbar-user" id="topbar-email-label">👤</span>
+    <button class="btn-history" onclick="openHistoryModal()" title="Histórico de alterações">🕐 Histórico</button>
     <button class="topbar-logout" onclick="doLogout()">Sair</button>
   </div>
 </div>
@@ -1137,6 +1157,17 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 </div>
 
 
+<!-- History Modal -->
+<div id="historyModal" onclick="if(event.target.id==='historyModal')closeHistoryModal()">
+  <div class="hist-panel">
+    <div class="hist-header">
+      <h3>🕐 Histórico de Alterações</h3>
+      <button onclick="closeHistoryModal()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#9ca3af;line-height:1">×</button>
+    </div>
+    <div class="hist-body" id="historyList"><div class="hist-empty">Nenhuma alteração registrada ainda.</div></div>
+  </div>
+</div>
+
 <!-- Loading -->
 <div id="lwrap" class="lwrap" style="display:none"><div class="lbox"><div class="spin"></div><p id="lmsg">Aguarde...</p></div></div>
 
@@ -1187,7 +1218,7 @@ function _applyState(s){
   // Previne que cliente desatualizado sobrescreva edições mais novas
   const _mergedDels={};
   _localDeliveries.forEach(d=>{if(d.id&&!_delDelSet.has(d.id))_mergedDels[d.id]=d;});
-  (Array.isArray(s.deliveries)?s.deliveries:[]).forEach(d=>{
+  (Array.isArray(s.deliveries)?s.deliveries:Object.values(s.deliveries||{})).forEach(d=>{
     if(!d.id||_delDelSet.has(d.id))return;
     const _loc=_mergedDels[d.id];
     if(!_loc){_mergedDels[d.id]=d;return;}
@@ -1200,23 +1231,22 @@ function _applyState(s){
   // Se alguma entrega local é mais nova que o servidor, corrige o Firebase
   // (evita que outro cliente com dados antigos sobrescreva uma edição recente)
   if(_fbDb&&!_fbSaving){
-    let _needsCorrection=false;
-    (Array.isArray(s.deliveries)?s.deliveries:[]).forEach(d=>{
-      if(!d.id||_delDelSet.has(d.id))return;
-      const _merged=_mergedDels[d.id];if(!_merged)return;
-      const _sTs=d.updatedAt||d.createdAt||'';
-      const _mTs=_merged.updatedAt||_merged.createdAt||'';
-      if(_mTs>_sTs)_needsCorrection=true;
+    const _sDelivArr2=Array.isArray(s.deliveries)?s.deliveries:Object.values(s.deliveries||{});
+    const _sByIdD={};_sDelivArr2.forEach(d=>{if(d&&d.id)_sByIdD[d.id]=d;});
+    Object.values(_mergedDels).forEach(d=>{
+      const srv=_sByIdD[d.id];
+      const _sTs2=srv?(srv.updatedAt||srv.createdAt||''):'';
+      const _mTs2=d.updatedAt||d.createdAt||'';
+      if(_mTs2>_sTs2){
+        // Write apenas este delivery — não o array inteiro
+        setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/deliveries/'+d.id).set(d).catch(()=>{});},1200);
+      }
     });
-    if(_needsCorrection){
-      // Empurra array corrigido ao Firebase após pequeno delay para evitar loop
-      setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/deliveries').set(Object.values(_mergedDels)).catch(()=>{});},1200);
-    }
   }
   // TRANSFERS: merge por ID mantendo versão mais recente (mesma lógica das entregas)
   const _mergedTcs={};
   _localTransfers.forEach(t=>{if(t.id&&!_delTcSet.has(t.id))_mergedTcs[t.id]=t;});
-  (Array.isArray(s.transfers)?s.transfers:[]).forEach(t=>{
+  (Array.isArray(s.transfers)?s.transfers:Object.values(s.transfers||{})).forEach(t=>{
     if(!t.id||_delTcSet.has(t.id))return;
     const _locTc=_mergedTcs[t.id];
     if(!_locTc){_mergedTcs[t.id]=t;return;}
@@ -1228,17 +1258,17 @@ function _applyState(s){
   ST.transfers=Object.values(_mergedTcs);
   // Auto-correção: se local tem transferência mais nova, empurra de volta ao Firebase
   if(_fbDb&&!_fbSaving){
-    let _tcNeedsCorr=false;
-    (Array.isArray(s.transfers)?s.transfers:[]).forEach(t=>{
-      if(!t.id||_delTcSet.has(t.id))return;
-      const _merged=_mergedTcs[t.id];if(!_merged)return;
-      const _sTs2=t.updatedAt||t.createdAt||'';
-      const _mTs2=_merged.updatedAt||_merged.createdAt||'';
-      if(_mTs2>_sTs2)_tcNeedsCorr=true;
+    const _sTcArr2=Array.isArray(s.transfers)?s.transfers:Object.values(s.transfers||{});
+    const _sByIdTc={};_sTcArr2.forEach(t=>{if(t&&t.id)_sByIdTc[t.id]=t;});
+    Object.values(_mergedTcs).forEach(t=>{
+      const srv=_sByIdTc[t.id];
+      const _sTs2Tc=srv?(srv.updatedAt||srv.createdAt||''):'';
+      const _mTs2Tc=t.updatedAt||t.createdAt||'';
+      if(_mTs2Tc>_sTs2Tc){
+        // Write apenas este transfer — não o array inteiro
+        setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/transfers/'+t.id).set(t).catch(()=>{});},1500);
+      }
     });
-    if(_tcNeedsCorr){
-      setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/transfers').set(Object.values(_mergedTcs)).catch(()=>{});},1500);
-    }
   }
   // ROUTE PLANS: merge por data com _savedAt — evita overwrite de plano mais recente
   if(s.routePlans&&typeof s.routePlans==='object'){
@@ -1246,8 +1276,8 @@ function _applyState(s){
       const _srvP=s.routePlans[date];
       const _locP=ST.routePlans[date];
       if(!_locP){ST.routePlans[date]=_srvP;return;}
-      const _sTs=_srvP._savedAt||'';
-      const _lTs=_locP._savedAt||'';
+      const _sTs=_srvP._routeStructureAt||'';
+      const _lTs=_locP._routeStructureAt||'';
       if(_sTs>_lTs){
         ST.routePlans[date]=_srvP; // servidor mais recente
       } else if(_lTs>_sTs&&_fbDb&&!_fbSaving){
@@ -1259,29 +1289,25 @@ function _applyState(s){
   }
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
   if(s.routePlan&&s.routePlan.date&&s.routePlan.manha)ST.routePlans[s.routePlan.date]=s.routePlan;
-  if(s.transfChecks&&typeof s.transfChecks==='object')ST.transfChecks=s.transfChecks;
+  // transfChecks: key-level union merge — nunca perde uma key escrita por outro dispositivo
+  if(s.transfChecks&&typeof s.transfChecks==='object'){
+    const _chkMerged=JSON.parse(JSON.stringify(_localChecks));
+    Object.keys(s.transfChecks).forEach(date=>{
+      if(!_chkMerged[date]){_chkMerged[date]=s.transfChecks[date];return;}
+      // servidor vence conflito de key individual (write mais recente no Firebase ganhou)
+      Object.keys(s.transfChecks[date]).forEach(k=>{_chkMerged[date][k]=s.transfChecks[date][k];});
+    });
+    ST.transfChecks=_chkMerged;
+  } else { ST.transfChecks=_localChecks; }
+  // transfLocEdits: key-level union merge por date (mesmo princípio)
   if(s.transfLocEdits&&typeof s.transfLocEdits==='object'){
-    ST.transfLocEdits=s.transfLocEdits;
-    // Merge: mantém versão local se for mais recente que o servidor (por _savedAt)
-    Object.keys(_localLocEdits).forEach(date=>{
-      if(!ST.transfLocEdits[date]){ST.transfLocEdits[date]=_localLocEdits[date];return;}
-      const _lLeTs=_localLocEdits[date]._savedAt||'';
-      const _sLeTs=ST.transfLocEdits[date]._savedAt||'';
-      if(_lLeTs>_sLeTs)ST.transfLocEdits[date]=_localLocEdits[date];
+    const _leMerged=JSON.parse(JSON.stringify(_localLocEdits));
+    Object.keys(s.transfLocEdits).forEach(date=>{
+      if(!_leMerged[date]){_leMerged[date]=s.transfLocEdits[date];return;}
+      Object.keys(s.transfLocEdits[date]).forEach(k=>{_leMerged[date][k]=s.transfLocEdits[date][k];});
     });
+    ST.transfLocEdits=_leMerged;
   } else { ST.transfLocEdits=_localLocEdits; }
-  // Auto-correção transfLocEdits: se local tem versão mais nova, empurra ao Firebase
-  if(_fbDb&&!_fbSaving&&s.transfLocEdits&&typeof s.transfLocEdits==='object'){
-    let _leNeedsCorr=false;
-    Object.keys(ST.transfLocEdits||{}).forEach(date=>{
-      const _lLeTs2=ST.transfLocEdits[date]?._savedAt||'';
-      const _sLeTs2=(s.transfLocEdits||{})[date]?._savedAt||'';
-      if(_lLeTs2>_sLeTs2)_leNeedsCorr=true;
-    });
-    if(_leNeedsCorr){
-      setTimeout(()=>{if(!_fbSaving)_fbDb.ref('cdl_state/transfLocEdits').set(ST.transfLocEdits||{}).catch(()=>{});},1800);
-    }
-  }
 
   // Mesclar driverStatus: usa progressão de status + timestamp para decidir qual é mais recente
   // (evita que save do admin sobrescreva atualização do motorista, e vice-versa)
@@ -1309,15 +1335,7 @@ function _applyState(s){
   });
   // Restaurar finalizedDates locais (união: datas finalizadas localmente nunca são perdidas)
   _localFinal.forEach(d=>{if(!ST.finalizedDates.includes(d))ST.finalizedDates.push(d);});
-  // Mesclar transfChecks por _savedAt — salve mais recente por data sempre vence
-  Object.keys(_localChecks).forEach(date=>{
-    if(!ST.transfChecks[date]){ST.transfChecks[date]=_localChecks[date];return;}
-    const localTs=_localChecks[date]._savedAt||'';
-    const serverTs=ST.transfChecks[date]._savedAt||'';
-    if(localTs>serverTs){ST.transfChecks[date]=_localChecks[date];}
-    // else server é mais recente — já foi aplicado acima
-  });
-  // _savedAt permanece em ST.transfChecks para resolver conflitos futuros
+  // transfChecks já mesclado por key-level union acima — sem comparação por _savedAt
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
 let _authInitialized=false;
@@ -1347,6 +1365,7 @@ function initFirebase(){
         if(_el)_el.textContent='👤 '+(user.email||'');
         if(_authInitialized)return;
         _authInitialized=true;
+        _currentUserLabel=(user.email||'usuário').split('@')[0];
         _fbDb=firebase.database();
         load();
         _fbDb.ref('cdl_state').on('value',(snap)=>{
@@ -1391,6 +1410,14 @@ function initFirebase(){
       if(modalOpen)return;
       renderSidebar();
       renderContent();
+    });
+    // Audit log listener — load last 150 entries, update in real-time
+    _fbDb.ref('cdl_auditLog').limitToLast(150).on('value',(snap)=>{
+      if(!snap.exists())return;
+      const entries=[];
+      snap.forEach(child=>{entries.push(child.val());});
+      _auditLog=entries.reverse(); // mais recentes primeiro
+      _renderHistoryIfOpen();
     });
     // Load config (drivers, vehicles, catalog, locaisColeta)
     _fbDb.ref('cdl_config').once('value').then(snap=>{
@@ -1526,35 +1553,81 @@ const WEEKS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MONTHS=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 
 let ST={deliveries:[],transfers:[],selectedDate:null,routePlans:{},finalizedDates:[],transfChecks:{},transfLocEdits:{}};
+let _auditLog=[];
+let _currentUserLabel='Usuário';
+function _logAudit(action,desc,date){
+  const entry={ts:new Date().toISOString(),user:_currentUserLabel,action:action,desc:desc,date:date||ST.selectedDate||''};
+  _auditLog.unshift(entry);
+  if(_auditLog.length>200)_auditLog.length=200;
+  if(_fbDb){_fbDb.ref('cdl_auditLog').push(entry).catch(()=>{});}
+  _renderHistoryIfOpen();
+}
+function _renderHistoryIfOpen(){
+  const modal=document.getElementById('historyModal');
+  if(!modal||modal.style.display==='none')return;
+  _renderHistoryList();
+}
+function _renderHistoryList(){
+  const list=document.getElementById('historyList');
+  if(!list)return;
+  if(!_auditLog.length){list.innerHTML='<div class="hist-empty">Nenhuma alteração registrada ainda.</div>';return;}
+  const DOT={card:'hist-dot-card',status:'hist-dot-status',rota:'hist-dot-rota',transf:'hist-dot-transf',sistema:'hist-dot-sistema'};
+  list.innerHTML=_auditLog.map(e=>{
+    const d=new Date(e.ts);
+    const timeStr=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+'&nbsp;'+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const dotCls=DOT[e.action]||'hist-dot-sistema';
+    const user=esc(e.user||'Sistema');
+    const desc=esc(e.desc||'');
+    return '<div class="hist-entry"><span class="hist-dot '+dotCls+'"></span><span class="hist-time">'+timeStr+'</span><span><span class="hist-user">'+user+'</span><span class="hist-desc">'+desc+'</span></span></div>';
+  }).join('');
+}
+function openHistoryModal(){
+  const modal=document.getElementById('historyModal');
+  if(!modal)return;
+  modal.style.display='flex';
+  _renderHistoryList();
+}
+function closeHistoryModal(){
+  const modal=document.getElementById('historyModal');
+  if(modal)modal.style.display='none';
+}
 let finSectionOpen=true;
 let editingRoute=false,editingBy='';
 let editId=null,newCard=false,insPer=null,insAfter=-1,dragSrc=null,_cardClickTimer=null;
+let _cardOpenedAt=''; // updatedAt do card no momento em que foi aberto para edição
 let editingTransfRoute=false,editingTransfBy='',tDragSrc=null;
+let _routeDirtyDates=new Set(),_routeDeletedDates=new Set(),_checksDirtyDates=new Set();
 
+function _markRouteModified(){if(ST.selectedDate&&ST.routePlans&&ST.routePlans[ST.selectedDate]){ST.routePlans[ST.selectedDate]._routeStructureAt=new Date().toISOString();}if(ST.selectedDate)_routeDirtyDates.add(ST.selectedDate);}
 function save(){
   // Stampa _savedAt antes do localStorage para que _applyState possa comparar timestamps
   const _now2=new Date().toISOString();
-  Object.keys(ST.transfChecks||{}).forEach(date=>{
+  _checksDirtyDates.forEach(date=>{
     if(ST.transfChecks[date])ST.transfChecks[date]._savedAt=_now2;
   });
+  _checksDirtyDates.clear();
   try{localStorage.setItem(SKEY,JSON.stringify(ST))}catch(e){}
   if(_fbDb){
     _fbSaving=true;
     // update() em vez de set() — preserva cdl_state/files/ que o set() apagaria
+    // Apenas metadados globais — itens individuais são escritos diretamente por path
     const _upd={
-      deliveries:ST.deliveries||[],
       finalizedDates:ST.finalizedDates||[],
-      transfers:ST.transfers||[],
-      transfChecks:ST.transfChecks,
-      transfLocEdits:ST.transfLocEdits||{},
       deletedTcIds:ST.deletedTcIds||[],
       deletedDeliveryIds:ST.deletedDeliveryIds||[]
     };
-    // Salva APENAS o plano da data ativa — evita que cliente desatualizado sobrescreva outros dias
+    // Salva routePlan no Firebase SOMENTE quando a estrutura foi modificada
+    // Evita que edições de cards sobrescrevam a rota com versão antiga de outro dispositivo
+    if(_routeDeletedDates.size){_routeDeletedDates.forEach(dt=>{_upd['routePlans/'+dt]=null;});_routeDeletedDates.clear();}
     if(ST.selectedDate&&ST.routePlans[ST.selectedDate]){
-      ST.routePlans[ST.selectedDate]._savedAt=_now2;
-      _upd['routePlans/'+ST.selectedDate]=ST.routePlans[ST.selectedDate];
+      if(_routeDirtyDates.has(ST.selectedDate)){
+        ST.routePlans[ST.selectedDate]._savedAt=_now2;
+        _upd['routePlans/'+ST.selectedDate]=ST.routePlans[ST.selectedDate];
+        _routeDirtyDates.delete(ST.selectedDate);
+      }
+      // Senão: rota não foi modificada neste save — não envia ao Firebase
     } else {
+      // Plano deletado ou sem data selecionada — sincroniza todos os planos restantes
       Object.keys(ST.routePlans||{}).forEach(dt=>{if(ST.routePlans[dt])ST.routePlans[dt]._savedAt=_now2;});
       _upd.routePlans=ST.routePlans||{};
     }
@@ -1698,7 +1771,8 @@ document.addEventListener('click',closeSbMenus);
 
 function deleteRoute(date){
   if(!confirm('Apagar a rota de '+fmtDate(date)+'?\nAs entregas do dia continuarão salvas, apenas a rota será removida.'))return;
-  if(ST.routePlans)delete ST.routePlans[date];
+  _logAudit('rota','Apagou a rota de '+fmtDate(date),date);
+  _routeDeletedDates.add(date);if(ST.routePlans)delete ST.routePlans[date];
   save();renderSidebar();
   if(ST.selectedDate===date)renderRouteSection();
   toast('Rota apagada','ok');
@@ -1707,6 +1781,7 @@ function deleteRoute(date){
 function deleteDay(date){
   const cnt=dayD(date).length;
   if(!confirm('Apagar o dia '+fmtDate(date)+'?\nIsso removerá '+cnt+' entrega'+( cnt!==1?'s':'')+' e a rota do dia. Esta ação não pode ser desfeita.'))return;
+  _logAudit('rota','Apagou o dia '+fmtDate(date)+' ('+dayD(date).length+' entregas)',date);
   ST.deliveries=ST.deliveries.filter(d=>d.data!==date);
   if(ST.routePlans)delete ST.routePlans[date];
   if(ST.finalizedDates)ST.finalizedDates=ST.finalizedDates.filter(d=>d!==date);
@@ -2023,7 +2098,7 @@ function saveManhaStart(){
   if(!val)return;
   const [h,m]=val.split(':').map(Number);
   plan.manhaStart=h*60+m;
-  save();renderRoutePanels();
+  _markRouteModified();save();renderRoutePanels();
   toast('Horário de saída atualizado ✓ Recalculando...','ok');
   const _recalcPers=[];
   if(plan.manha?.stops?.length>1)_recalcPers.push('manha');
@@ -2035,7 +2110,7 @@ function saveManhaStart(){
 function clearManhaStart(){
   const plan=curPlan();if(!plan)return;
   plan.manhaStart=null;
-  save();renderRoutePanels();
+  _markRouteModified();save();renderRoutePanels();
   const _recalcPers2=[];
   if(plan.manha?.stops?.length>1)_recalcPers2.push('manha');
   if(plan.tarde?.stops?.length>1&&!plan.tarde.totalDur)_recalcPers2.push('tarde');
@@ -2324,7 +2399,7 @@ function setTardeBase(baseKey){
     else st.unshift({type:'start',key:baseKey});
     plan.tarde.legDurs=[];plan.tarde.legDists=[];plan.tarde.totalDist=0;plan.tarde.totalDur=0;
   }
-  save();renderRoutePanels(); // Mudança instantânea — sem overlay bloqueante
+  _markRouteModified();save();renderRoutePanels(); // Mudança instantânea — sem overlay bloqueante
   toast('Base atualizada ✓ Recalculando...','ok');
   recalcPer('tarde').then(()=>{save();reRenderPanels();}).catch(e=>console.warn('setTardeBase:',e));
 }
@@ -2397,7 +2472,7 @@ function moveStop(per,i,dir){
   [stops[i],stops[j]]=[stops[j],stops[i]];
   plan[per].legDurs=[];plan[per].legDists=[];plan[per].totalDist=0;plan[per].totalDur=0;
   addRouteHistorico('Reordenação manual',editingBy||'Sistema');
-  save();reRenderPanels();
+  _markRouteModified();save();reRenderPanels();
   toast(dir<0?'Movido para cima ▲':'Movido para baixo ▼','ok');
   showL('Recalculando...');recalcPer(per).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
 }
@@ -2762,10 +2837,11 @@ async function runRouteGeneration(){
         stops.splice(insAt,0,tcStop);
       }
     }
-    save();
+    _logAudit('sistema','Sistema gerou sugestão de rota para '+fmtDate(ST.selectedDate),ST.selectedDate);
+    _markRouteModified();save();
     setLm('Recalculando rotas...');
     await Promise.all([recalcPer('manha'),recalcPer('tarde'),recalcTransfPer('manha'),recalcTransfPer('tarde')]);
-    save();hideL();editingRoute=false;renderRouteSection();renderCards();toast('Sugestão de rota gerada!','ok');
+    _markRouteModified();save();hideL();editingRoute=false;renderRouteSection();renderCards();toast('Sugestão de rota gerada!','ok');
   }catch(err){hideL();toast('Erro: '+err.message,'err');console.error(err);}
 }
 function gerarSugestao(){runRouteGeneration();}
@@ -2883,6 +2959,7 @@ function confirmarNome(){
   closeNameModal();
   if(forTransf){_confirmarNomeTransf(nome);return;}
   editingRoute=true;editingBy=nome;
+  _logAudit('rota','Iniciou edição da rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
   document.getElementById('editBanner').textContent='Editando rota – '+nome+' (arraste os itens para reordenar)';
   document.getElementById('editJust').value='';
   renderRouteSection();
@@ -2895,6 +2972,7 @@ function salvarRota(){
   curPlan().justification='Rota alterada por '+editingBy+(just?'.\n\n'+just:'.');
   addRouteHistorico('Rota salva'+(just?' — '+just.substring(0,60)+(just.length>60?'...':''):''),editingBy);
   editingRoute=false;editingBy='';
+  _logAudit('rota','Salvou alterações na rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
   save();renderRouteSection();toast('Rota salva!','ok');
 }
 function cancelarEdicao(){
@@ -2958,7 +3036,7 @@ function remStop(per,idx){
   curPlan()[per].stops.splice(idx,1);
   addRouteHistorico(`Parada removida: ${lbl}`,editingBy||'Sistema');
   curPlan()[per].legDurs=[];curPlan()[per].legDists=[];curPlan()[per].totalDist=0;curPlan()[per].totalDur=0;
-  save();reRenderPanels();
+  _markRouteModified();save();reRenderPanels();
   showL('Recalculando distâncias...');
   recalcPer(per).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
 }
@@ -3065,7 +3143,7 @@ function loadFileUI(){
 function sf(id,v){const el=document.getElementById(id);if(el)el.value=v;}
 function gf(id){return document.getElementById(id)?.value?.trim()||'';}
 function openNew(){
-  editId=uid();newCard=true;
+  editId=uid();newCard=true;_cardOpenedAt='';
   document.getElementById('cTitle').textContent='Nova Entrega';document.getElementById('btnDel').style.display='none';
   sf('fData',ST.selectedDate||'');sf('fPer','');sf('fSt','');sf('fOv','');sf('fLj','CD');
   ['fCli','fCep','fRua','fNum','fCmp','fBai','fCid','fProd','fContNome','fContTel','fMl','fNotas','fRestAlm','fRestHorario','fAutor','fPeso','fValor','fDocFiscal','fNfNum','fHoraDe','fHoraAte'].forEach(id=>sf(id,''));
@@ -3089,7 +3167,7 @@ function openTcFromRoute(tcId){
 
 function openCard(id){
   const d=ST.deliveries.find(x=>x.id===id);if(!d)return;
-  editId=id;document.getElementById('cTitle').textContent='Editar Entrega';document.getElementById('btnDel').style.display='';
+  editId=id;_cardOpenedAt=d.updatedAt||d.createdAt||'';document.getElementById('cTitle').textContent='Editar Entrega';document.getElementById('btnDel').style.display='';
   sf('fData',d.data||'');sf('fPer',d.periodo||'');sf('fSt',d.status||'');sf('fOv',d.origemVenda||'');sf('fLj',d.loja||'CD');
   sf('fCli',d.cliente||'');sf('fCep',d.cep||'');sf('fRua',d.rua||'');sf('fNum',d.numero||'');sf('fCmp',d.complemento||'');
   sf('fBai',d.bairro||'');sf('fCid',d.cidade||'');sf('fProd',d.produto||'');sf('fContNome',d.contatoNome||'');sf('fContTel',d.contato||'');sf('fMl',d.mapsLink||'');
@@ -3116,6 +3194,33 @@ function closeCard(){
   if(newCard&&editId){localStorage.removeItem(nfKey(editId));localStorage.removeItem(blKey(editId));}
   newCard=false;
   document.getElementById('cOverlay').style.display='none';
+}
+function _showCardConflict(tipo,card){
+  document.getElementById('cardConflictOverlay')?.remove();
+  const quem=card?.updatedBy||card?.createdBy||'outro usuário';
+  const quando=card?.updatedAt?new Date(card.updatedAt).toLocaleString('pt-BR'):'';
+  const overlay=document.createElement('div');
+  overlay.id='cardConflictOverlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center';
+  const isEntrega=tipo==='entrega';
+  overlay.innerHTML=`
+    <div style="background:#fff;border-radius:14px;padding:28px;max-width:420px;width:92%;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+      <div style="font-size:36px;text-align:center;margin-bottom:12px">⚠️</div>
+      <h3 style="margin:0 0 10px;color:#dc2626;font-size:16px;text-align:center">Card alterado por outro usuário</h3>
+      <p style="font-size:13px;color:#374151;text-align:center;line-height:1.6;margin:0 0 6px">
+        Este card de <strong>${tipo}</strong> foi salvo por <strong>${esc(quem)}</strong>${quando?' às '+quando:''} enquanto você editava.
+      </p>
+      <p style="font-size:12px;color:#6b7280;text-align:center;margin:0 0 20px">
+        Suas alterações <strong>não foram salvas</strong>. Recarregue o card para ver a versão mais recente e refaça sua edição.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="document.getElementById('cardConflictOverlay').remove();${isEntrega?'closeCard()':'closeTcForm()'};toast('Card recarregado — verifique e edite novamente','ok')"
+          style="padding:11px;border:none;border-radius:8px;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🔄 Recarregar card</button>
+        <button onclick="document.getElementById('cardConflictOverlay').remove()"
+          style="padding:9px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;color:#374151;font-size:12px;cursor:pointer">Manter edição aberta (sem salvar)</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 function saveCard(){
   const autor=gf('fAutor').trim();
@@ -3144,6 +3249,12 @@ function saveCard(){
   // update attachment flags from localStorage
   data.hasNf=!!localStorage.getItem(nfKey(editId));
   data.hasBoleto=!!localStorage.getItem(blKey(editId));
+  // Controle de concorrência: bloqueia se outro usuário modificou o card enquanto estava aberto
+  if(!newCard&&editId&&_cardOpenedAt){
+    const _concurDel=ST.deliveries.find(x=>x.id===editId);
+    const _concurTs=_concurDel?(_concurDel.updatedAt||_concurDel.createdAt||''):'';
+    if(_concurTs&&_concurTs>_cardOpenedAt){_showCardConflict('entrega',_concurDel);return;}
+  }
   const wasNewCard=newCard;
   if(!newCard&&editId){
     const idx=ST.deliveries.findIndex(x=>x.id===editId);
@@ -3163,6 +3274,11 @@ function saveCard(){
       if(!dayPlan.needsRouting.includes(editId))dayPlan.needsRouting.push(editId);
     }
   }
+  const _auditAction=wasNewCard?'criou':'editou';
+  const _auditVerb=wasNewCard?'Criou nova entrega':'Editou entrega';
+  _logAudit('card',_auditVerb+': '+data.cliente,data.data);
+  // Escreve apenas este card no Firebase — sem sobrescrever outros cards simultâneos
+  if(_fbDb){const _fbDIdx=ST.deliveries.findIndex(x=>x.id===editId);if(_fbDIdx>=0)_fbDb.ref('cdl_state/deliveries/'+editId).set(ST.deliveries[_fbDIdx]).catch(()=>{});}
   save();closeCard();renderSidebar();
   if(ST.selectedDate===data.data||ST.selectedDate===null)renderContent();
   toast('Entrega salva!','ok');
@@ -3299,7 +3415,7 @@ function removeDelivFromRoute(id){
       plan[per].stops=plan[per].stops.filter(s=>!(s.type==='delivery'&&String(s.id)===String(id)));
     }
   }
-  save();renderContent();
+  _markRouteModified();save();renderContent();
 }
 function showDelivInRoutePopover(delivId,btn,per){
   document.querySelectorAll('.route-popover').forEach(p=>p.remove());
@@ -3346,7 +3462,7 @@ function addDelivToRoute(delivId,per){
   const retIdx=stops.findLastIndex(s=>s.type==='return');
   if(retIdx>=0)stops.splice(retIdx,0,{type:'delivery',id:delivId});
   else stops.push({type:'delivery',id:delivId});
-  save();renderContent();toast('Entrega adicionada à rota de '+per,'ok');
+  _markRouteModified();save();renderContent();toast('Entrega adicionada à rota de '+per,'ok');
 }
 function findUnrouted(){
   if(!curPlan())return[];
@@ -3428,7 +3544,7 @@ function confirmUnrouted(){
   addRouteHistorico('Entrega(s) adicionada(s) à rota: '+names,'Sistema');
   // Remove confirmed IDs from needsRouting
   if(plan.needsRouting)plan.needsRouting=plan.needsRouting.filter(id=>!_uSug.some(sg=>sg.d.id===id));
-  save();closeUModal();renderRouteSection();toast('Entrega(s) incluída(s) na rota!','ok');
+  _markRouteModified();save();closeUModal();renderRouteSection();toast('Entrega(s) incluída(s) na rota!','ok');
 }
 
 function delCard(){
@@ -3458,6 +3574,7 @@ function delCard(){
   if(editId){
     if(!ST.deletedDeliveryIds)ST.deletedDeliveryIds=[];
     if(!ST.deletedDeliveryIds.includes(editId))ST.deletedDeliveryIds.push(editId);
+    if(_fbDb)_fbDb.ref('cdl_state/deliveries/'+editId).remove().catch(()=>{});
   }
   ST.deliveries=ST.deliveries.filter(x=>x.id!==editId);
   if(curPlan()){
@@ -4477,6 +4594,13 @@ function setDriverStatus(statusKey,status,recebidoPor){
   const _sdsNew=recebidoPor?{status,recebidoPor}:{status};
   if(_sdsChks&&status!=='pendente')_sdsNew.prodChecks=_sdsChks;
   plan.driverStatus[statusKey]=_sdsNew;
+  const _statusLabels2={pendente:'Pendente',a_caminho:'A caminho',entregue:'Entregue',nao_entregue:'Não entregue'};
+  const [_dsPer,_dsIdx]=statusKey.split('_');
+  const _dsStop=curPlan()?.[_dsPer]?.stops?.[+_dsIdx];
+  const _dsD=_dsStop?.id?ST.deliveries.find(x=>x.id===_dsStop.id):null;
+  const _dsCliente=_dsD?.cliente||statusKey;
+  const _dsRecMsg=recebidoPor?' (recebido por '+recebidoPor+')':'';
+  _logAudit('status','Status de "'+_dsCliente+'" → '+(_statusLabels2[status]||status)+_dsRecMsg,ST.selectedDate);
   save();
   renderDriverView();
   const pg=document.getElementById('page-gestao');
@@ -5329,7 +5453,7 @@ function injectColetaStops(perName){
   if(!n) return 0;
   plan[perName].legDurs=[];
   plan[perName].legDists=[];
-  save();
+  _markRouteModified();save();
   return n;
 }
 async function inserirColetasERota(){
@@ -5390,6 +5514,7 @@ document.getElementById('nomeInput').addEventListener('keydown',e=>{if(e.key==='
 let _tcProdutos=[];
 let _tcSelected=new Set();
 let tcEditId=null;
+let _tcOpenedAt=''; // updatedAt do TC card no momento em que foi aberto para edição
 let tcNewCard=false;
 let _tcProdEditIdx=null;
 let _cardProdEditIdx=null;
@@ -5484,7 +5609,7 @@ function classifyTcProd(p){
 
 function openTcForm(){
   tcNewCard=true;
-  tcEditId='tc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+  tcEditId='tc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);_tcOpenedAt='';
   _tcProdutos=[];_tcSelected=new Set();renderTcProdLista();
   document.getElementById('tcTitle').textContent='Nova Transferência / Coleta';
   const _btnDel0=document.getElementById('tcBtnDel');if(_btnDel0)_btnDel0.style.display='none';
@@ -5591,7 +5716,7 @@ document.addEventListener('keydown', function(e){
 function openEditTcCard(id){
   const tc=(ST.transfers||[]).find(x=>x.id===id);
   if(!tc)return;
-  tcEditId=id;tcNewCard=false;
+  tcEditId=id;tcNewCard=false;_tcOpenedAt=tc.updatedAt||tc.createdAt||'';
   _tcProdutos=[...(tc.produtos||[])];renderTcProdLista();
   document.getElementById('tcTitle').textContent='Editar Transferência / Coleta';
   const _btnDel1=document.getElementById('tcBtnDel');if(_btnDel1)_btnDel1.style.display='';
@@ -6042,10 +6167,17 @@ function saveTcCard(){
   const tagImp=!!(document.getElementById('tcTagImportante')||{}).checked;
   const rec={id:tcEditId,titulo,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:gf('tcPontoDestino'),produtos:[..._tcProdutos]};
   if(!ST.transfers)ST.transfers=[];
+  // Controle de concorrência: bloqueia se outro usuário modificou o card enquanto estava aberto
+  if(!tcNewCard&&tcEditId&&_tcOpenedAt){
+    const _concurTc=(ST.transfers||[]).find(x=>x.id===tcEditId);
+    const _concurTcTs=_concurTc?(_concurTc.updatedAt||_concurTc.createdAt||''):'';
+    if(_concurTcTs&&_concurTcTs>_tcOpenedAt){_showCardConflict('coleta',_concurTc);return;}
+  }
   if(!tcNewCard){
     // Editing existing — just update
     const idx=ST.transfers.findIndex(x=>x.id===tcEditId);
     if(idx>=0)ST.transfers[idx]={...ST.transfers[idx],...rec,historico:[...(ST.transfers[idx].historico||[]),{nome:autor,em:hoje+' '+now,tipo:'alteração'}],updatedAt:new Date().toISOString(),updatedBy:autor};
+    if(idx>=0&&_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId).set(ST.transfers[idx]).catch(()=>{});
     if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
     save();closeTcForm();renderSidebar();
     if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
@@ -6074,6 +6206,7 @@ function saveTcCard(){
 let _pendingTcRec=null,_pendingTcExistId=null,_pendingTcAutor='',_pendingTcNow='';
 function _doCreateTcCard(rec,autor,stamp){
   const _nowIsoTc=new Date().toISOString();ST.transfers.push({...rec,historico:[{nome:autor,em:stamp,tipo:'criação'}],createdAt:_nowIsoTc,updatedAt:_nowIsoTc,createdBy:autor});
+  if(_fbDb)_fbDb.ref('cdl_state/transfers/'+rec.id).set(ST.transfers[ST.transfers.length-1]).catch(()=>{});
   if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
   save();closeTcForm();renderSidebar();
   if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
@@ -6090,6 +6223,7 @@ function _doAddToExistingTc(){
       ex.antesEntrega=[ex.antesEntrega,rec.antesEntrega].filter(Boolean).join(', ');
     ex.historico=[...(ex.historico||[]),{nome:_pendingTcAutor,em:_pendingTcNow,tipo:'adição de produtos'}];
   }
+  if(idx>=0&&_fbDb)_fbDb.ref('cdl_state/transfers/'+ST.transfers[idx].id).set(ST.transfers[idx]).catch(()=>{});
   _pendingTcRec=null;_pendingTcExistId=null;
   if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
   save();closeTcForm();renderSidebar();
@@ -6130,6 +6264,7 @@ function deleteTcCard(){
   if(tcEditId){
     if(!ST.deletedTcIds)ST.deletedTcIds=[];
     if(!ST.deletedTcIds.includes(tcEditId))ST.deletedTcIds.push(tcEditId);
+    if(_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId).remove().catch(()=>{});
   }
   ST.transfers=(ST.transfers||[]).filter(x=>x.id!==tcEditId);
   save();closeTcForm();renderSidebar();renderContent();toast('Registro excluído','ok');
@@ -6542,11 +6677,13 @@ function _excluirTransfDia(date){
   if(senha===null) return;
   if(senha!=='5056'){toast('Senha incorreta','err');return;}
   if(!confirm('Confirmar exclusao de TODAS as informacoes do dia '+label+'?\nEssa acao nao pode ser desfeita.')) return;
+  const _exclTcs=(ST.transfers||[]).filter(t=>t.data===date);
   ST.transfers = (ST.transfers||[]).filter(t=>t.data!==date);
   if(ST.transfChecks) delete ST.transfChecks[date];
   if(ST.transfLocEdits) delete ST.transfLocEdits[date];
   if(ST.finalizedDates) ST.finalizedDates = ST.finalizedDates.filter(d=>d!==date);
   if(_transfDate===date) _transfDate=null;
+  if(_fbDb){const _exclUpd={};_exclTcs.forEach(t=>{_exclUpd['transfers/'+t.id]=null;});_exclUpd['transfChecks/'+date]=null;_exclUpd['transfLocEdits/'+date]=null;_fbDb.ref('cdl_state').update(_exclUpd).catch(()=>{});}
   save();
   _renderTransfSidebar(_transfDates());
   _renderTransfContent();
@@ -6589,7 +6726,10 @@ function marcarTodosTransfAll(date, type, btn){
     const allChk=[...trs].every(tr=>_getCheck(date,tr.dataset.tcid,+tr.dataset.pidx,type));
     trs.forEach(tr=>{ST.transfChecks[date][_chkKey(tr.dataset.tcid,+tr.dataset.pidx,type)]=!allChk;});
   }
-  save();_renderTransfContent();
+  _logAudit('transf','Marcou/desmarcou todos os itens de transferência – '+date,date);
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(_fbDb&&ST.transfChecks[date])_fbDb.ref('cdl_state/transfChecks/'+date).update(ST.transfChecks[date]).catch(()=>{});
+  _renderTransfContent();
 }
 function marcarTodosTransf(date, type, headerCb){
   const tbl=headerCb.closest('table');if(!tbl)return;
@@ -6600,7 +6740,8 @@ function marcarTodosTransf(date, type, headerCb){
     const k=_chkKey(tr.dataset.tcid,+tr.dataset.pidx,type);
     ST.transfChecks[date][k]=!allChk;
   });
-  save();
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(_fbDb&&ST.transfChecks[date])_fbDb.ref('cdl_state/transfChecks/'+date).update(ST.transfChecks[date]).catch(()=>{});
   headerCb.checked=!allChk;
   headerCb.indeterminate=false;
   _renderTransfContent();
@@ -6609,7 +6750,9 @@ function toggleTransfCheck(date, tcId, prodIdx, type, cb){
   if(!ST.transfChecks[date]) ST.transfChecks[date] = {};
   const k = _chkKey(tcId,prodIdx,type);
   ST.transfChecks[date][k] = cb.checked;
-  save();
+  _logAudit('transf',(cb.checked?'Marcou':'Desmarcou')+' item de transferência – '+date,date);
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(_fbDb)_fbDb.ref('cdl_state/transfChecks/'+date+'/'+k).set(cb.checked).catch(()=>{});
   // Atualiza visualmente a linha e re-renderiza a aba atual
   _updateCheckRowStyle(date, tcId, prodIdx, type, cb.checked);
   if(_transfSub==='Resumo') _renderTransfContent();
@@ -6706,7 +6849,9 @@ function consultarEstoqueLoja(loja,date){
 function toggleTransfRouteCheck(date, orig, nota, cb){
   if(!ST.transfChecks[date]) ST.transfChecks[date] = {};
   ST.transfChecks[date][`route__${orig}__${nota}__done`] = cb.checked;
-  save();
+  _logAudit('transf',(cb.checked?'Marcou':'Desmarcou')+' rota de transferência ('+orig+' → '+nota+') – '+date,date);
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(_fbDb)_fbDb.ref(`cdl_state/transfChecks/${date}/route__${orig}__${nota}__done`).set(cb.checked).catch(()=>{});
   _renderTransfContent();
 }
 
@@ -6768,13 +6913,19 @@ function _saveTransfReport(pop){
   if(!ST.transfChecks[date]['__tabAlerts__']) ST.transfChecks[date]['__tabAlerts__']=[];
   if(tabNow&&!ST.transfChecks[date]['__tabAlerts__'].includes(tabNow))
     ST.transfChecks[date]['__tabAlerts__'].push(tabNow);
-  save(); pop.remove(); _renderTransfContent();
+  _logAudit('transf','Reportou problema em transferência – '+date,date);
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(_fbDb&&ST.transfChecks[date]){const _rpUpd={};_rpUpd[rk]=ST.transfChecks[date][rk];_rpUpd['__tabAlerts__']=ST.transfChecks[date]['__tabAlerts__'];_fbDb.ref('cdl_state/transfChecks/'+date).update(_rpUpd).catch(()=>{});}
+  pop.remove(); _renderTransfContent();
   toast('Problema reportado!','ok');
 }
 function _clearTransfReport(pop){
   const {rdate:date,rtcId:tcId,rprodIdx:prodIdx,rtype:type}=pop.dataset;
-  if(ST.transfChecks[date]) delete ST.transfChecks[date][_rptKey(tcId,+prodIdx,type)];
-  save(); pop.remove(); _renderTransfContent();
+  const _clrKey=_rptKey(tcId,+prodIdx,type);
+  if(ST.transfChecks[date]) delete ST.transfChecks[date][_clrKey];
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(_fbDb)_fbDb.ref('cdl_state/transfChecks/'+date+'/'+_clrKey).remove().catch(()=>{});
+  pop.remove(); _renderTransfContent();
   toast('Reporte removido','ok');
 }
 // ── Resumo overrides (edição no Resumo) ────────────────────
@@ -6784,6 +6935,7 @@ function _saveResumoOverrides(date, obj){
   if(!ST.transfLocEdits[date]) ST.transfLocEdits[date]={};
   ST.transfLocEdits[date]['__resumo__']=obj;
   ST.transfLocEdits[date]._savedAt=new Date().toISOString();
+  if(_fbDb)_fbDb.ref('cdl_state/transfLocEdits/'+date+'/__resumo__').set(obj).catch(()=>{});
   save();
 }
 function openResumoEditModal(date, orig, nota){
@@ -7810,6 +7962,7 @@ function saveSectionEdit(date, loc, type, origRows){
   const allLog=[...(prev.changelog||[]),...changelog];
   ST.transfLocEdits[date][loc+'__'+type]={autor, removed:allRemoved, extras:allExtras, changelog:allLog};
   ST.transfLocEdits[date]._savedAt=new Date().toISOString();
+  if(_fbDb)_fbDb.ref('cdl_state/transfLocEdits/'+date+'/'+(loc+'__'+type)).set(ST.transfLocEdits[date][loc+'__'+type]).catch(()=>{});
   save();
   document.getElementById('sectionEditOverlay')?.remove();
   renderTransfTab();
