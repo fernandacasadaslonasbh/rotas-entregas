@@ -6575,6 +6575,7 @@ function saveTransfStart(per){
   const [h,m]=val.split(':').map(Number);
   plan[field]=h*60+m;
   _markRouteModified();
+  _logAudit('rota','Alterou horário de saída de transferências ('+(per==='manha'?'Manhã':'Tarde')+') para '+val,ST.selectedDate);
   recalcTransfPer(per).then(()=>{save();renderTransfPanels();}).catch(()=>{save();renderTransfPanels();});
   toast('Horário de saída atualizado','ok');
 }
@@ -6583,6 +6584,7 @@ function clearTransfStart(per){
   const field=per==='manha'?'transfManhaStart':'transfTardeStart';
   plan[field]=null;
   _markRouteModified();
+  _logAudit('rota','Restaurou horário padrão de saída de transferências ('+(per==='manha'?'Manhã':'Tarde')+')',ST.selectedDate);
   recalcTransfPer(per).then(()=>{save();renderTransfPanels();}).catch(()=>{save();renderTransfPanels();});
 }
 function salvarTransfRota(){
