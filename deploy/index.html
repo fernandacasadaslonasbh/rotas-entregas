@@ -1276,15 +1276,24 @@ function _applyState(s){
       const _srvP=s.routePlans[date];
       const _locP=ST.routePlans[date];
       if(!_locP){ST.routePlans[date]=_srvP;return;}
+      // Comparação em dois níveis: estrutura primeiro, depois salvamento
       const _sTs=_srvP._routeStructureAt||'';
       const _lTs=_locP._routeStructureAt||'';
+      const _sSv=_srvP._savedAt||'';
+      const _lSv=_locP._savedAt||'';
+      // Servidor mais recente em estrutura → aplica servidor
       if(_sTs>_lTs){
-        ST.routePlans[date]=_srvP; // servidor mais recente
+        ST.routePlans[date]=_srvP;
+      // Local mais recente em estrutura → empurra local ao Firebase
       } else if(_lTs>_sTs&&_fbDb&&!_fbSaving){
-        // Local mais recente: corrige servidor silenciosamente
+        _fbDb.ref('cdl_state/routePlans/'+date).set(_locP).catch(()=>{});
+      // Mesma estrutura: desempata por _savedAt (quem salvou por último vence)
+      } else if(_sSv>_lSv){
+        ST.routePlans[date]=_srvP; // servidor foi salvo mais recentemente
+      } else if(_lSv>_sSv&&_fbDb&&!_fbSaving){
         _fbDb.ref('cdl_state/routePlans/'+date).set(_locP).catch(()=>{});
       }
-      // else: mesmo timestamp — mantém local
+      // else: timestamps idênticos — mantém local (sem mudança real)
     });
   }
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
@@ -1593,6 +1602,9 @@ function closeHistoryModal(){
 }
 let finSectionOpen=true;
 let editingRoute=false,editingBy='';
+let _routeLockListener=null; // Firebase listener de lock de rota
+let _routeLockDate='';     // Data para a qual o lock foi adquirido
+let _pendingRouteLockNome=''; // Nome pendente ao aguardar confirmação de lock
 let editId=null,newCard=false,insPer=null,insAfter=-1,dragSrc=null,_cardClickTimer=null;
 let _cardOpenedAt=''; // updatedAt do card no momento em que foi aberto para edição
 let editingTransfRoute=false,editingTransfBy='',tDragSrc=null;
@@ -1619,19 +1631,16 @@ function save(){
     // Salva routePlan no Firebase SOMENTE quando a estrutura foi modificada
     // Evita que edições de cards sobrescrevam a rota com versão antiga de outro dispositivo
     if(_routeDeletedDates.size){_routeDeletedDates.forEach(dt=>{_upd['routePlans/'+dt]=null;});_routeDeletedDates.clear();}
-    if(ST.selectedDate&&ST.routePlans[ST.selectedDate]){
-      if(_routeDirtyDates.has(ST.selectedDate)){
-        ST.routePlans[ST.selectedDate]._savedAt=_now2;
-        _upd['routePlans/'+ST.selectedDate]=ST.routePlans[ST.selectedDate];
-        _routeDirtyDates.delete(ST.selectedDate);
+    // Envia apenas rotas marcadas como dirty — nunca envia todas (evita sobrescrever versões mais novas)
+    _routeDirtyDates.forEach(dt=>{
+      if(ST.routePlans[dt]){
+        ST.routePlans[dt]._savedAt=_now2;
+        _upd['routePlans/'+dt]=ST.routePlans[dt];
       }
-      // Senão: rota não foi modificada neste save — não envia ao Firebase
-    } else {
-      // Plano deletado ou sem data selecionada — sincroniza todos os planos restantes
-      Object.keys(ST.routePlans||{}).forEach(dt=>{if(ST.routePlans[dt])ST.routePlans[dt]._savedAt=_now2;});
-      _upd.routePlans=ST.routePlans||{};
-    }
-    _fbDb.ref('cdl_state').update(_upd).then(()=>{setTimeout(()=>{_fbSaving=false;if(_pendingExternalState){const _ps=_pendingExternalState;_pendingExternalState=null;_applyState(_ps);const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');if(!_mo){renderSidebar();renderContent();}}},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
+    });
+    _fbDb.ref('cdl_state').update(_upd).then(()=>{
+      _routeDirtyDates.clear(); // Bug #4 fix: limpa dirty DEPOIS do sucesso
+      setTimeout(()=>{_fbSaving=false;if(_pendingExternalState){const _ps=_pendingExternalState;_pendingExternalState=null;_applyState(_ps);const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');if(!_mo){renderSidebar();renderContent();}}},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
     // Grava driverStatus no caminho dedicado — com _savedAt para resolver conflitos por timestamp
     const _dsTs={};const _now=new Date().toISOString();
     Object.keys(ST.routePlans||{}).forEach(date=>{
@@ -2958,11 +2967,7 @@ function confirmarNome(){
   document.getElementById('nOverlay').dataset.forTransf='';
   closeNameModal();
   if(forTransf){_confirmarNomeTransf(nome);return;}
-  editingRoute=true;editingBy=nome;
-  _logAudit('rota','Iniciou edição da rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
-  document.getElementById('editBanner').textContent='Editando rota – '+nome+' (arraste os itens para reordenar)';
-  document.getElementById('editJust').value='';
-  renderRouteSection();
+  _acquireRouteLock(nome);
 }
 function salvarRota(){
   if(!curPlan())return;
@@ -2971,13 +2976,106 @@ function salvarRota(){
   curPlan().alteredBy=editingBy;
   curPlan().justification='Rota alterada por '+editingBy+(just?'.\n\n'+just:'.');
   addRouteHistorico('Rota salva'+(just?' — '+just.substring(0,60)+(just.length>60?'...':''):''),editingBy);
+  _releaseRouteLock();
   editingRoute=false;editingBy='';
   _logAudit('rota','Salvou alterações na rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
   save();renderRouteSection();toast('Rota salva!','ok');
 }
 function cancelarEdicao(){
+  _releaseRouteLock();
   editingRoute=false;editingBy='';
   renderRouteSection();
+}
+
+// ── Route lock / presença de edição ──────────────────────────────────────
+function _acquireRouteLock(nome){
+  _pendingRouteLockNome=nome;
+  const date=ST.selectedDate;
+  if(!_fbDb){_startRouteEdit(nome);return;}
+  _fbDb.ref('cdl_state/routeEditing/'+date).once('value',snap=>{
+    const lock=snap.val();
+    const tenMin=10*60*1000;
+    const isActive=lock&&lock.user&&lock.user!==nome&&lock.at&&(new Date()-new Date(lock.at))<tenMin;
+    if(isActive){_showRouteLockModal(lock.user,lock.at);return;}
+    // Lock livre — adquirir
+    _fbDb.ref('cdl_state/routeEditing/'+date).set({user:nome,at:new Date().toISOString()})
+      .then(()=>_startEditWithListener(nome,date))
+      .catch(()=>_startEditWithListener(nome,date));
+  });
+}
+function _startEditWithListener(nome,date){
+  _startRouteEdit(nome);
+  _routeLockDate=date;
+  // Observar se outra pessoa tomar o lock enquanto editamos
+  if(_routeLockListener){
+    try{_fbDb.ref('cdl_state/routeEditing/'+date).off('value',_routeLockListener);}catch(e){}
+    _routeLockListener=null;
+  }
+  _routeLockListener=function(snap2){
+    const l2=snap2.val();
+    if(l2&&l2.user&&l2.user!==nome&&editingRoute){
+      toast('⚠️ '+l2.user+' também iniciou edição desta rota!','err');
+    }
+  };
+  _fbDb.ref('cdl_state/routeEditing/'+date).on('value',_routeLockListener);
+}
+function _startRouteEdit(nome){
+  editingRoute=true;editingBy=nome;
+  _logAudit('rota','Iniciou edição da rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
+  document.getElementById('editBanner').textContent='Editando rota – '+nome+' (arraste os itens para reordenar)';
+  document.getElementById('editJust').value='';
+  renderRouteSection();
+}
+function _releaseRouteLock(){
+  if(!_fbDb)return;
+  const date=_routeLockDate||ST.selectedDate;
+  const byUser=editingBy;
+  if(date&&byUser){
+    _fbDb.ref('cdl_state/routeEditing/'+date).once('value',snap=>{
+      const lock=snap.val();
+      if(lock&&lock.user===byUser){
+        _fbDb.ref('cdl_state/routeEditing/'+date).remove().catch(()=>{});
+      }
+    });
+  }
+  if(_routeLockListener&&date){
+    try{_fbDb.ref('cdl_state/routeEditing/'+date).off('value',_routeLockListener);}catch(e){}
+    _routeLockListener=null;
+  }
+  _routeLockDate='';
+}
+function _showRouteLockModal(user,at){
+  document.getElementById('routeLockOverlay')?.remove();
+  const quando=at?new Date(at).toLocaleString('pt-BR'):'';
+  const ov=document.createElement('div');
+  ov.id='routeLockOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center';
+  ov.innerHTML=`<div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+    <div style="font-size:2rem;margin-bottom:8px">🔒</div>
+    <h3 style="margin:0 0 12px;color:#1e293b;font-size:1.1rem">Rota em edição</h3>
+    <p style="color:#475569;margin:0 0 6px"><strong>${user}</strong> está editando esta rota.</p>
+    ${quando?`<p style="color:#94a3b8;font-size:0.82rem;margin:0 0 20px">Desde ${quando}</p>`:'<div style="margin-bottom:20px"></div>'}
+    <p style="color:#64748b;font-size:0.88rem;margin:0 0 24px">Aguarde a edição ser concluída para evitar conflitos. Se necessário, você pode forçar a edição.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button onclick="document.getElementById('routeLockOverlay').remove()" style="padding:8px 20px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;font-size:0.88rem">Fechar</button>
+      <button onclick="_forceAcquireRouteLock()" style="padding:8px 20px;border-radius:8px;border:none;background:#ef4444;color:#fff;cursor:pointer;font-size:0.88rem">Editar mesmo assim</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function _forceAcquireRouteLock(){
+  document.getElementById('routeLockOverlay')?.remove();
+  const nome=_pendingRouteLockNome;
+  if(!nome)return;
+  _pendingRouteLockNome='';
+  const date=ST.selectedDate;
+  if(_fbDb){
+    _fbDb.ref('cdl_state/routeEditing/'+date).set({user:nome,at:new Date().toISOString()})
+      .then(()=>_startEditWithListener(nome,date))
+      .catch(()=>_startEditWithListener(nome,date));
+  } else {
+    _startRouteEdit(nome);
+  }
 }
 
 // ── Stop modal ─────────────────────────────────────────────────────────────
