@@ -1918,7 +1918,7 @@ function renderCards(){
           ${cardPrecisaMdfe(d)?`<div onclick="event.stopPropagation();showMdfePreviewCard('${d.id}')" style="padding:4px 8px;background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;font-size:0.72rem;color:#dc2626;font-weight:600;cursor:pointer" title="Clique para ver a mensagem MDF-e">🚛 MDF-e obrigatório — clique para ver ▶</div>`:`<div style="padding:4px 8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:0.72rem;color:#16a34a;font-weight:600">✅ Não precisa de MDF-e</div>`}
           ${(()=>{
             const origens=[...(new Set((d.produtos||[]).map(p=>p.origem).filter(Boolean)))];
-            const temExterno=origens.some(o=>o!=='CD');
+            const temExterno=origens.some(o=>o.toUpperCase()!=='CD');
             if(!temExterno)return`<div style="margin-top:4px;padding:4px 8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:0.72rem;color:#16a34a;font-weight:600">🟢 Saída pelo CD</div>`;
             if(d.coletasProvidenciadas)return`<div onclick="event.stopPropagation();toggleColetasStatus('${d.id}')" style="margin-top:4px;padding:4px 8px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:0.72rem;color:#16a34a;font-weight:600;cursor:pointer">✅ Coletas/transferências providenciadas ▾</div>`;
             return`<div onclick="event.stopPropagation();toggleColetasStatus('${d.id}')" style="margin-top:4px;padding:4px 8px;background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;font-size:0.72rem;color:#dc2626;font-weight:600;cursor:pointer">⚠ Necessário providenciar coleta/transferência — clique ▾</div>`;
@@ -5530,7 +5530,7 @@ function renderCardProdutos(){
           <div><label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Qtd</label>
             <input id="cpedit-qtd" type="number" min="0.01" step="0.01" value="${p.qtd||1}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
           <div><label style="font-size:10px;color:#6b7280;display:block;margin-bottom:2px">Origem</label>
-            <input id="cpedit-origem" value="${esc(p.origem||'')}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box"></div>
+            <select id="cpedit-origem" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box">${['CD','Matriz','Filial'].map(b=>`<option value="${b}"${(p.origem||'').toUpperCase()===b.toUpperCase()?' selected':''}>`+b+`</option>`).join('')}</select></div>
         </div>
         <div style="display:flex;gap:6px">
           <button onclick="saveCardProdEdit(${i})" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:6px;font-size:12px;font-weight:700;cursor:pointer">✓ Salvar</button>
@@ -5750,7 +5750,7 @@ function toggleColetasStatus(delivId){
   const rect=btn.getBoundingClientRect();
   pop.style.top=(rect.bottom+6)+'px';
   pop.style.left=Math.min(rect.left,window.innerWidth-270)+'px';
-  const origens=[...new Set((d.produtos||[]).map(p=>p.origem).filter(p=>p&&p!=='CD'))];
+  const origens=[...new Set((d.produtos||[]).map(p=>p.origem).filter(p=>p&&p.toUpperCase()!=='CD'))];
   pop.innerHTML=`
     <div style="font-weight:700;color:#374151;margin-bottom:8px">📦 Origens externas: ${origens.map(o=>'<strong>'+esc(o)+'</strong>').join(', ')||'—'}</div>
     ${d.coletasProvidenciadas
