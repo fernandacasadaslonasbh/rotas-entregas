@@ -2880,7 +2880,7 @@ async function runRouteGeneration(){
     _logAudit('sistema','Sistema gerou sugestão de rota para '+fmtDate(ST.selectedDate),ST.selectedDate);
     _markRouteModified();save();
     setLm('Recalculando rotas...');
-    await Promise.all([recalcPer('manha'),recalcPer('tarde'),recalcTransfPer('manha'),recalcTransfPer('tarde')]);
+    await Promise.all([recalcPer('manha'),recalcPer('tarde'),recalcTransfPer('manha').catch(e=>console.warn('recalcTransfPer manha:',e.message)),recalcTransfPer('tarde').catch(e=>console.warn('recalcTransfPer tarde:',e.message))]);
     _markRouteModified();save();hideL();editingRoute=false;renderRouteSection();renderCards();toast('Sugestão de rota gerada!','ok');
   }catch(err){hideL();toast('Erro: '+err.message,'err');console.error(err);}
 }
@@ -2930,7 +2930,11 @@ async function buildPer(del){
   [...tight.map(d=>d.id),...ids,...woC.map(d=>d.id)].forEach(id=>stops.push({type:'delivery',id}));
   stops.push({type:'return',key:'CD'}); // retorno ao CD ao final
   let totalDist=0,totalDur=0,legDurs=[];
-  const pts=stops.map(s=>{if(s.type==='start'||s.type==='pickup'||s.type==='return')return bc[s.key];if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);return d?.coords;}if(s.type==='custom'){if(s.key&&bc[s.key])return bc[s.key];if(s.coords)return s.coords;}if(s.type==='tc'){const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!_tc)return null;const _d=_tc.pontoDestino;if(_d&&_d!=='Cliente'&&bc[_d])return bc[_d];return null;}return null;}).filter(Boolean);
+  const _bpRaw=stops.map(s=>{if(s.type==='start'||s.type==='pickup'||s.type==='return')return bc[s.key]||null;if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);return d?.coords||null;}if(s.type==='custom'){if(s.key&&bc[s.key])return bc[s.key];if(s.coords)return s.coords;return null;}if(s.type==='tc'){const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!_tc)return null;const _d=_tc.pontoDestino;if(_d&&_d!=='Cliente'&&bc[_d])return bc[_d];return null;}return null;});
+  // null-fill forward then backward (preserves index alignment with stops → legDurs corretos)
+  {let _v=null;for(let i=0;i<_bpRaw.length;i++){if(_bpRaw[i])_v=_bpRaw[i];else if(_v)_bpRaw[i]=_v;}}
+  {let _v=null;for(let i=_bpRaw.length-1;i>=0;i--){if(_bpRaw[i])_v=_bpRaw[i];else if(_v)_bpRaw[i]=_v;}}
+  const pts=_bpRaw;
   let legDists=[];
   // Avoid circular routing (origin==destination) — split into delivery route + return leg
   const hasReturn=stops[stops.length-1]?.type==='return';
@@ -6481,6 +6485,11 @@ function _tcRouteGroups(tc){
   return Object.values(groups).map(g=>`${g.origem}→${g.destFisico} (${g.qtd})`).join(' | ');
 }
 
+function _tcInferDestino(tc){
+  if(tc.pontoDestino&&tc.pontoDestino!=='Cliente'&&BASES[tc.pontoDestino])return tc.pontoDestino;
+  if(tc.pontoSaida&&tc.pontoSaida!=='Cliente'&&BASES[tc.pontoSaida])return tc.pontoSaida;
+  return null;
+}
 async function recalcTransfPer(per){
   const plan=curPlan();if(!plan)return;
   const stops=per==='manha'?(plan.transfManha||[]):(plan.transfTarde||[]);
