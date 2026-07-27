@@ -564,7 +564,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 .hist-dot-rota{background:#f59e0b;}
 .hist-dot-transf{background:#8b5cf6;}
 .hist-dot-sistema{background:#94a3b8;}
-.hist-time{font-size:0.75rem;color:#94a3b8;white-space:nowrap;font-variant-numeric:tabular-nums;min-width:42px;}
+.hist-time{font-size:0.75rem;color:#94a3b8;white-space:nowrap;font-variant-numeric:tabular-nums;min-width:82px;}
 .hist-user{font-size:0.8rem;font-weight:700;color:#374151;margin-right:4px;}
 .hist-desc{font-size:0.8rem;color:#6b7280;flex:1;}
 .hist-empty{padding:32px;text-align:center;color:#9ca3af;font-size:0.85rem;}
@@ -1578,7 +1578,7 @@ function _logAudit(action,desc,date){
   const entry={ts:new Date().toISOString(),user:_currentUserLabel,action:action,desc:desc,date:date||ST.selectedDate||''};
   _auditLog.unshift(entry);
   if(_auditLog.length>200)_auditLog.length=200;
-  if(_fbDb){_fbDb.ref('cdl_auditLog').push(entry).catch(()=>{});}
+  if(_fbDb){_fbDb.ref('cdl_auditLog').push(entry).catch(e=>console.warn('[auditLog] Erro ao gravar histórico:',e?.message||e));}
   _renderHistoryIfOpen();
 }
 function _renderHistoryIfOpen(){
@@ -6368,6 +6368,7 @@ function saveTcCard(){
     const idx=ST.transfers.findIndex(x=>x.id===tcEditId);
     if(idx>=0)ST.transfers[idx]={...ST.transfers[idx],...rec,historico:[...(ST.transfers[idx].historico||[]),{nome:autor,em:hoje+' '+now,tipo:'alteração'}],updatedAt:new Date().toISOString(),updatedBy:autor};
     if(idx>=0&&_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId).set(ST.transfers[idx]).catch(()=>{});
+    _logAudit('card','Editou coleta/transferência: '+titulo,rec.data);
     if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
     save();closeTcForm();renderSidebar();
     if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
@@ -6397,6 +6398,7 @@ let _pendingTcRec=null,_pendingTcExistId=null,_pendingTcAutor='',_pendingTcNow='
 function _doCreateTcCard(rec,autor,stamp){
   const _nowIsoTc=new Date().toISOString();ST.transfers.push({...rec,historico:[{nome:autor,em:stamp,tipo:'criação'}],createdAt:_nowIsoTc,updatedAt:_nowIsoTc,createdBy:autor});
   if(_fbDb)_fbDb.ref('cdl_state/transfers/'+rec.id).set(ST.transfers[ST.transfers.length-1]).catch(()=>{});
+  _logAudit('card','Criou coleta/transferência: '+(rec.titulo||''),rec.data);
   if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
   save();closeTcForm();renderSidebar();
   if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
@@ -6456,7 +6458,9 @@ function deleteTcCard(){
     if(!ST.deletedTcIds.includes(tcEditId))ST.deletedTcIds.push(tcEditId);
     if(_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId).remove().catch(()=>{});
   }
+  const _delTc=(ST.transfers||[]).find(x=>x.id===tcEditId);
   ST.transfers=(ST.transfers||[]).filter(x=>x.id!==tcEditId);
+  _logAudit('card','Excluiu coleta/transferência: '+(_delTc?.titulo||tcEditId),_delTc?.data||ST.selectedDate);
   save();closeTcForm();renderSidebar();renderContent();toast('Registro excluído','ok');
 }
 
@@ -6549,8 +6553,41 @@ function _confirmarNomeTransf(nome){
   document.getElementById('transfEditArea').style.display='';
   renderTransfBtns();renderTransfPanels();
 }
+function startEditTransfStart(per){
+  const plan=curPlan();if(!plan)return;
+  const field=per==='manha'?'transfManhaStart':'transfTardeStart';
+  const defMin=per==='manha'?(plan.manhaStart??8*60+30):13*60+30;
+  const cur=plan[field]??defMin;
+  const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+  const bannerKey='transf-saida-banner-'+per;
+  const row=document.getElementById(bannerKey);if(!row)return;
+  row.innerHTML=`<span style="font-weight:600">🕗 Saída ${per==='manha'?'Manhã':'Tarde'}:</span>
+    <input type="time" id="transf-time-inp-${per}" value="${fmHH(cur)}" style="margin:0 6px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:0.82rem">
+    <button onclick="saveTransfStart('${per}')" style="padding:2px 8px;background:#7c3aed;color:#fff;border:none;border-radius:5px;font-size:0.78rem;cursor:pointer;font-weight:600">✓ Salvar</button>
+    <button onclick="clearTransfStart('${per}')" style="padding:2px 6px;background:transparent;border:1px solid #6b7280;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#6b7280;margin-left:4px" title="Restaurar padrão">↩</button>`;
+  setTimeout(()=>document.getElementById('transf-time-inp-'+per)?.focus(),30);
+}
+function saveTransfStart(per){
+  const plan=curPlan();if(!plan)return;
+  const field=per==='manha'?'transfManhaStart':'transfTardeStart';
+  const val=document.getElementById('transf-time-inp-'+per)?.value;
+  if(!val)return;
+  const [h,m]=val.split(':').map(Number);
+  plan[field]=h*60+m;
+  _markRouteModified();
+  recalcTransfPer(per).then(()=>{save();renderTransfPanels();}).catch(()=>{save();renderTransfPanels();});
+  toast('Horário de saída atualizado','ok');
+}
+function clearTransfStart(per){
+  const plan=curPlan();if(!plan)return;
+  const field=per==='manha'?'transfManhaStart':'transfTardeStart';
+  plan[field]=null;
+  _markRouteModified();
+  recalcTransfPer(per).then(()=>{save();renderTransfPanels();}).catch(()=>{save();renderTransfPanels();});
+}
 function salvarTransfRota(){
   editingTransfRoute=false;editingTransfBy='';
+  _logAudit('rota','Salvou rota de transferências de '+fmtDate(ST.selectedDate),ST.selectedDate);
   document.getElementById('transfEditArea').style.display='none';
   showL('Recalculando...');
   Promise.all([recalcTransfPer('manha'),recalcTransfPer('tarde')]).then(()=>{save();hideL();renderTransfBtns();renderTransfPanels();}).catch(()=>hideL());
@@ -6582,7 +6619,9 @@ function remTransfStop(per,fullIdx){
   const plan=curPlan();if(!plan)return;
   const key=per==='manha'?'transfManha':'transfTarde';
   const actual=fullIdx-1;if(actual<0)return;
+  const _remSt=plan[key]?plan[key][actual]:null;
   if(plan[key])plan[key].splice(actual,1);
+  if(_remSt?.tcId){const _remTcS=(ST.transfers||[]).find(x=>x.id===_remSt.tcId);_logAudit('rota','Removeu da rota de transferências ('+(per==='manha'?'Manhã':'Tarde')+'): '+(_remTcS?.titulo||_remSt.tcId),ST.selectedDate);}
   save();reRenderTransfPanels();
 }
 function insertTransfWaypoint(per,afterFullIdx,baseKey){
@@ -6657,7 +6696,7 @@ function transfPanelHTML(per){
   function fmD(m){return(m/1000).toFixed(1).replace('.',',')+'km';}
   function fmT(s){const m=Math.round(s/60);if(m<60)return m+'min';return Math.floor(m/60)+'h'+(m%60?m%60+'min':'');}
   function fmHHMM(t){return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');}
-  const perStart=per==='manha'?(plan.manhaStart??8*60+30):13*60+30;
+  const perStart=per==='manha'?(plan.transfManhaStart??plan.manhaStart??8*60+30):(plan.transfTardeStart??13*60+30);
   const fullStops=[{type:'start',key:startBase},...midStops,{type:'return',key:'CD'}];
   const legDurs=calc.legDurs||[],legDists=calc.legDists||[];
   const totalInfo=[midStops.length+' parada'+(midStops.length!==1?'s':''),calc.totalDist?fmD(calc.totalDist):'',calc.totalDur?fmT(calc.totalDur):''].filter(Boolean).join(' · ');
@@ -6679,6 +6718,12 @@ function transfPanelHTML(per){
   }else{
     startRow='<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:4px;font-size:0.79rem"><span class="r-ico">🏭</span><div class="r-body"><div class="r-name">'+startLabel+'</div></div><div style="font-size:0.74rem;color:#6b7280">'+fmHHMM(perStart)+'</div></div>';
   }
+  const _tsBannerKey='transf-saida-banner-'+per;
+  const _tsIsOverride=per==='manha'?plan.transfManhaStart!=null:plan.transfTardeStart!=null;
+  const _tsPerLabel=per==='manha'?'Manhã':'Tarde';
+  const _tsClearBtn=_tsIsOverride?'<button onclick="clearTransfStart(\''+per+'\')" style="margin-left:4px;padding:2px 6px;background:transparent;border:1px solid #d1d5db;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#9ca3af" title="Restaurar padrão">↩</button>':'';
+  const _tsStyle=_tsIsOverride?'':'background:#f9fafb;border-color:#e5e7eb;color:#6b7280';
+  const _tsBanner='<div id="'+_tsBannerKey+'" class="lunch-banner'+(_tsIsOverride?' lunch-ok':'')+'" style="cursor:default;'+_tsStyle+'">'+'<span>🕗 Saída '+_tsPerLabel+' — '+fmHHMM(perStart)+'</span>'+'<button onclick="startEditTransfStart(\''+per+'\')" style="margin-left:8px;padding:2px 8px;background:transparent;border:1px solid #9ca3af;border-radius:5px;font-size:0.78rem;cursor:pointer;color:#374151">✏️ editar</button>'+_tsClearBtn+'</div>';
   let sl='<ul class="route-stops" id="tls-'+per+'" ondragover="event.preventDefault()" ondrop="ulTransfDrop(event,\''+per+'\')">';
   fullStops.forEach((s,fullIdx)=>{
     const isStart=s.type==='start',isReturn=s.type==='return';
@@ -6712,7 +6757,7 @@ function transfPanelHTML(per){
     }
   });
   sl+='</ul>';
-  let html='<div class="rpanel"><div class="rpanel-hdr"><h3 style="color:'+perColor+'">'+perLabel+'</h3><p>'+totalInfo+'</p></div>'+startRow+sl;
+  let html='<div class="rpanel"><div class="rpanel-hdr"><h3 style="color:'+perColor+'">'+perLabel+'</h3><p>'+totalInfo+'</p></div>'+_tsBanner+startRow+sl;
   if(mu)html+='<a href="'+mu+'" target="_blank" class="maps-go">Abrir no Google Maps</a>';
   html+='</div>';
   return html;
@@ -8174,6 +8219,7 @@ function saveSectionEdit(date, loc, type, origRows){
   ST.transfLocEdits[date]._savedAt=new Date().toISOString();
   if(_fbDb)_fbDb.ref('cdl_state/transfLocEdits/'+date+'/'+(loc+'__'+type)).set(ST.transfLocEdits[date][loc+'__'+type]).catch(()=>{});
   save();
+  _logAudit('transf','Editou seção '+(type==='sep'?'Separação':'Recebimentos')+' — '+loc,date);
   _clearPresenceEditando();
   document.getElementById('sectionEditOverlay')?.remove();
   renderTransfTab();
@@ -8838,7 +8884,7 @@ function addTcToRoute(tcId, routeType, per){
   if(!ST.routePlans)ST.routePlans={};
   if(!ST.selectedDate){toast('Selecione um dia primeiro','err');return;}
   if(!ST.routePlans[ST.selectedDate]){
-    ST.routePlans[ST.selectedDate]={manha:{stops:[],legDurs:[],legDists:[]},tarde:{stops:[],legDurs:[],legDists:[]},transfManha:[],transfTarde:[],transfManhaCalc:{startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0},transfTardeCalc:{startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0},needsRouting:[],driverStatus:{}};
+    ST.routePlans[ST.selectedDate]={manha:{stops:[],legDurs:[],legDists:[]},tarde:{stops:[],legDurs:[],legDists:[]},transfManha:[],transfTarde:[],transfManhaCalc:{startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0},transfTardeCalc:{startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0},needsRouting:[],driverStatus:{},transfManhaStart:null,transfTardeStart:null};
   }
   const plan=ST.routePlans[ST.selectedDate];
   if(routeType==='transf'){
@@ -8847,6 +8893,9 @@ function addTcToRoute(tcId, routeType, per){
     // Avoid duplicates in same period
     if(plan[key].some(s=>s.tcId===tcId)){toast('Já está nesta rota','err');return;}
     plan[key].push({type:'tc',tcId});
+    const _addTc=(ST.transfers||[]).find(x=>x.id===tcId);
+    _logAudit('rota','Incluiu na rota de transferências ('+(per==='manha'?'Manhã':'Tarde')+'): '+(_addTc?.titulo||tcId),ST.selectedDate);
+    renderCards(); // atualiza botão imediatamente sem esperar recalc
     recalcTransfPer(per).then(()=>{save();renderTransfPanels();renderContent();});
     toast(`Adicionado à rota de transferências (${per==='manha'?'Manhã':'Tarde'})`,'ok');
   } else {
