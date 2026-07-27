@@ -1561,6 +1561,7 @@ const _origSwitchTab=typeof switchTab!=='undefined'?switchTab:null;
 
 const FATOR_TRANSITO=1.4; // Usado apenas como fallback quando sem chave Google
 let _mapsEnabled=false; // Maps disponível se /api/config retornar mapsEnabled:true
+let _configReady=Promise.resolve(); // resolvida após /api/config responder
 const GOOGLE_MAPS_API_KEY=''; // chave removida do frontend — proxy via /api/maps
 const BASES={
   CD:    {label:'CD Galpão (Contagem)',  addr:'Rua Monsenhor João Rodrigues 425, Industrial, Contagem, MG'},
@@ -2594,7 +2595,7 @@ async function geocodeNominatim(addr){
   for(let t=0;t<3;t++){try{await sleep(1200);const r=await fetch(url,{headers:{'User-Agent':'CasaDasLonasRoutes/1.0'}});const d=await r.json();if(d&&d[0])return{lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)};}catch(e){}await sleep(1200);}
   return null;
 }
-async function geocode(addr){return _mapsEnabled?geocodeGoogle(addr):geocodeNominatim(addr);}
+async function geocode(addr){await _configReady;return _mapsEnabled?geocodeGoogle(addr):geocodeNominatim(addr);}
 async function ensureBase(k){const c=getBC();if(c[k]&&c[k].lat)return c[k];const co=await geocode(BASES[k].addr);if(co){c[k]=co;saveBC(c);}return co;}
 
 // ── Routing ────────────────────────────────────────────────────────────────
@@ -5692,7 +5693,7 @@ initCustomBases();
 
 // Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
-fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled)_mapsEnabled=true;}).catch(()=>{});
+_configReady=fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled){_mapsEnabled=true;const _bc=getBC();['CD','Matriz','Filial'].forEach(k=>{if(_bc[k])delete _bc[k];});saveBC(_bc);const _rp=curPlan();if(_rp&&!editingRoute){const _pers=[];['manha','tarde'].forEach(per=>{const _pd=_rp[per];if(_pd&&(_pd.stops||[]).length>1&&(!_pd.legDurs||!_pd.legDurs.length||_pd.legDurs[0]===0))_pers.push(per);});if(_pers.length){Promise.all(_pers.map(p=>recalcPer(p))).then(()=>{save();reRenderPanels();}).catch(()=>{});}['manha','tarde'].forEach(per=>{const _key=per==='manha'?'transfManha':'transfTarde';const _ckey=per==='manha'?'transfManhaCalc':'transfTardeCalc';const _stops=(_rp[_key]||[]);const _calc=_rp[_ckey]||{};if(_stops.length&&(!_calc.legDurs||!_calc.legDurs.length)){recalcTransfPer(per).then(()=>{save();renderTransfPanels();}).catch(()=>{});}});}}}).catch(()=>{});
 document.getElementById('nomeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNome();});
 
 // ══════════════════════════════════════════════════════════════════════════════
