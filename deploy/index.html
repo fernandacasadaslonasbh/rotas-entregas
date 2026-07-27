@@ -1291,16 +1291,18 @@ function _applyState(s){
       // Servidor mais recente em estrutura → aplica servidor
       if(_sTs>_lTs){
         ST.routePlans[date]=_srvP;
-      // Local mais recente em estrutura → empurra local ao Firebase
-      } else if(_lTs>_sTs&&_fbDb&&!_fbSaving){
-        _fbDb.ref('cdl_state/routePlans/'+date).set(_locP).catch(()=>{});
-      // Mesma estrutura: desempata por _savedAt (quem salvou por último vence)
+        // Limpa cache de recalc — nova estrutura recebida do servidor exige novo cálculo
+        _legRecalcDone.delete(date+'-manha');_legRecalcDone.delete(date+'-tarde');
+        _transfRecalcDone.delete(date+'-transf-manha');_transfRecalcDone.delete(date+'-transf-tarde');
+      // Local mais recente: mantém local — save() explícito já gravou no Firebase
+      } else if(_lTs>_sTs){
+        // sem ação: versão local mais nova já está no Firebase via save() que chamou _markRouteModified
+      // Mesma estrutura: desempata por _savedAt
       } else if(_sSv>_lSv){
-        ST.routePlans[date]=_srvP; // servidor foi salvo mais recentemente
-      } else if(_lSv>_sSv&&_fbDb&&!_fbSaving){
-        _fbDb.ref('cdl_state/routePlans/'+date).set(_locP).catch(()=>{});
+        ST.routePlans[date]=_srvP;
+        _legRecalcDone.delete(date+'-manha');_legRecalcDone.delete(date+'-tarde');
       }
-      // else: timestamps idênticos — mantém local (sem mudança real)
+      // else: timestamps iguais ou local mais recente em _savedAt — mantém local
     });
   }
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
@@ -1639,7 +1641,7 @@ let _cardOpenedAt=''; // updatedAt do card no momento em que foi aberto para edi
 let editingTransfRoute=false,editingTransfBy='',tDragSrc=null;
 let _routeDirtyDates=new Set(),_routeDeletedDates=new Set(),_checksDirtyDates=new Set();
 
-function _markRouteModified(){if(ST.selectedDate&&ST.routePlans&&ST.routePlans[ST.selectedDate]){ST.routePlans[ST.selectedDate]._routeStructureAt=new Date().toISOString();}if(ST.selectedDate)_routeDirtyDates.add(ST.selectedDate);}
+function _markRouteModified(){if(ST.selectedDate&&ST.routePlans&&ST.routePlans[ST.selectedDate]){ST.routePlans[ST.selectedDate]._routeStructureAt=new Date().toISOString();}if(ST.selectedDate){_routeDirtyDates.add(ST.selectedDate);_legRecalcDone.delete(ST.selectedDate+'-manha');_legRecalcDone.delete(ST.selectedDate+'-tarde');_transfRecalcDone.delete(ST.selectedDate+'-transf-manha');_transfRecalcDone.delete(ST.selectedDate+'-transf-tarde');}}
 function save(){
   // Stampa _savedAt antes do localStorage para que _applyState possa comparar timestamps
   const _now2=new Date().toISOString();
@@ -2105,13 +2107,13 @@ function saveLunchOverride(){
   if(!val)return;
   const [h,m]=val.split(':').map(Number);
   plan.lunchOverride=h*60+m;
-  save();renderRoutePanels();
+  _markRouteModified();save();renderRoutePanels();
   toast('Horário de almoço atualizado ✓','ok');
 }
 function clearLunchOverride(){
   const plan=curPlan();if(!plan)return;
   plan.lunchOverride=null;
-  save();renderRoutePanels();
+  _markRouteModified();save();renderRoutePanels();
 }
 function manhaBannerHTML(plan){
   const fmHH=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
@@ -2573,7 +2575,7 @@ function ulDrop(e,per){
   // Limpar legs desatualizados dos períodos afetados antes de re-renderizar
   const affected=[...new Set([sp,per])];
   affected.forEach(p=>{if(curPlan()[p]){curPlan()[p].legDurs=[];curPlan()[p].legDists=[];curPlan()[p].totalDist=0;curPlan()[p].totalDur=0;}});
-  save();reRenderPanels();
+  _markRouteModified();save();reRenderPanels();
   // Recalcular distâncias em segundo plano
   showL('Recalculando distâncias...');
   Promise.all(affected.map(recalcPer)).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
@@ -3030,7 +3032,7 @@ function salvarRota(){
   _releaseRouteLock();
   editingRoute=false;editingBy='';
   _logAudit('rota','Salvou alterações na rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
-  save();renderRouteSection();toast('Rota salva!','ok');
+  _markRouteModified();save();renderRouteSection();toast('Rota salva!','ok');
 }
 function cancelarEdicao(){
   _releaseRouteLock();
@@ -3251,7 +3253,7 @@ function confirmStop(){
   curPlan()[insPer].stops.splice(insAfter+1,0,stop);
   const stopLabel=stop.key?(BASES[stop.key]?.label||stop.key):(stop.addr||'parada');
   addRouteHistorico(`Parada adicionada: ${stopLabel}`,editingBy||'Sistema');
-  closeStop();save();
+  _markRouteModified();closeStop();save();
   curPlan()[insPer].legDurs=[];curPlan()[insPer].legDists=[];curPlan()[insPer].totalDist=0;curPlan()[insPer].totalDur=0;
   reRenderPanels();
   showL('Recalculando distâncias...');
@@ -6616,7 +6618,7 @@ function salvarTransfRota(){
   editingTransfRoute=false;editingTransfBy='';
   _logAudit('rota','Salvou rota de transferências de '+fmtDate(ST.selectedDate),ST.selectedDate);
   document.getElementById('transfEditArea').style.display='none';
-  showL('Recalculando...');
+  _markRouteModified();showL('Recalculando...');
   Promise.all([recalcTransfPer('manha'),recalcTransfPer('tarde')]).then(()=>{save();hideL();renderTransfBtns();renderTransfPanels();}).catch(()=>hideL());
 }
 function cancelarTransfEdicao(){
@@ -6649,7 +6651,7 @@ function remTransfStop(per,fullIdx){
   const _remSt=plan[key]?plan[key][actual]:null;
   if(plan[key])plan[key].splice(actual,1);
   if(_remSt?.tcId){const _remTcS=(ST.transfers||[]).find(x=>x.id===_remSt.tcId);_logAudit('rota','Removeu da rota de transferências ('+(per==='manha'?'Manhã':'Tarde')+'): '+(_remTcS?.titulo||_remSt.tcId),ST.selectedDate);}
-  save();reRenderTransfPanels();
+  _markRouteModified();save();reRenderTransfPanels();
 }
 function insertTransfWaypoint(per,afterFullIdx,baseKey){
   document.querySelectorAll('.route-popover').forEach(p=>p.remove());
@@ -6657,7 +6659,7 @@ function insertTransfWaypoint(per,afterFullIdx,baseKey){
   const key=per==='manha'?'transfManha':'transfTarde';
   if(!plan[key])plan[key]=[];
   plan[key].splice(afterFullIdx,0,{type:'waypoint',key:baseKey});
-  save();reRenderTransfPanels();
+  _markRouteModified();save();reRenderTransfPanels();
 }
 function showInsTransfStopPopover(per,afterFullIdx,btn){
   document.querySelectorAll('.route-popover').forEach(p=>p.remove());
@@ -6704,7 +6706,7 @@ function ulTransfDrop(e,per){
     const[mv]=ss.splice(srcActual,1);
     ds.splice(insertFull!=null?Math.max(0,insertFull-1):ds.length,0,mv);
   }
-  save();reRenderTransfPanels();
+  _markRouteModified();save();reRenderTransfPanels();
 }
 function reRenderTransfPanels(){
   const pm=document.getElementById('tpM'),pt=document.getElementById('tpT');
@@ -8938,6 +8940,7 @@ function addTcToRoute(tcId, routeType, per){
     const _addTc=(ST.transfers||[]).find(x=>x.id===tcId);
     _logAudit('rota','Incluiu na rota de transferências ('+(per==='manha'?'Manhã':'Tarde')+'): '+(_addTc?.titulo||tcId),ST.selectedDate);
     renderCards(); // atualiza botão imediatamente sem esperar recalc
+    _markRouteModified();
     recalcTransfPer(per).then(()=>{save();renderTransfPanels();renderContent();});
     toast(`Adicionado à rota de transferências (${per==='manha'?'Manhã':'Tarde'})`,'ok');
   } else {
@@ -8952,7 +8955,7 @@ function addTcToRoute(tcId, routeType, per){
     const label=tc?('Transf./Coleta: '+_tcRouteGroups(tc)):'Transferência/Coleta';
     stops.splice(insertAt,0,{type:'tc',tcId,label});
     normalizeStartStop(per);normalizeReturnStop(per);
-    save();
+    _markRouteModified();save();
     recalcPer(per).then(()=>{save();renderRouteSection();renderContent();});
     toast(`Adicionado à rota de entregas (${per==='manha'?'Manhã':'Tarde'})`,'ok');
   }
