@@ -1351,8 +1351,8 @@ function _applyState(s){
     });
     ST.routePlans[date].driverStatus=merged;
   });
-  // Restaurar finalizedDates locais (união: datas finalizadas localmente nunca são perdidas)
-  _localFinal.forEach(d=>{if(!ST.finalizedDates.includes(d))ST.finalizedDates.push(d);});
+  // finalizedDates: servidor é a fonte da verdade — não há union merge
+  // (o union merge causava re-finalização automática quando outro dispositivo reativava o dia)
   // transfChecks já mesclado por key-level union acima — sem comparação por _savedAt
   try{localStorage.setItem('cdl_rotas_v3',JSON.stringify(ST));}catch(e){}
 }
@@ -1672,18 +1672,14 @@ function save(){
     _fbDb.ref('cdl_state').update(_upd).then(()=>{
       _routeDirtyDates.clear(); // Bug #4 fix: limpa dirty DEPOIS do sucesso
       setTimeout(()=>{_fbSaving=false;if(_pendingExternalState){const _ps=_pendingExternalState;_pendingExternalState=null;_applyState(_ps);const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');if(!_mo){renderSidebar();renderContent();}}},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
-    // Grava driverStatus no caminho dedicado — com _savedAt para resolver conflitos por timestamp
-    const _dsTs={};const _now=new Date().toISOString();
-    Object.keys(ST.routePlans||{}).forEach(date=>{
-      const ds=ST.routePlans[date]?.driverStatus;
-      if(!ds)return;
-      _dsTs[date]={};
-      Object.keys(ds).forEach(sk=>{
-        _dsTs[date][sk]={...ds[sk],_savedAt:_now};
-      });
-    });
-    if(Object.keys(_dsTs).length)_fbDb.ref('cdl_driverStatus').update(_dsTs).catch(e=>console.warn('driverStatus sync:',e));
+    // driverStatus NÃO é mais gravado aqui — apenas nas funções que o modificam explicitamente
+    // (evita que save() de outra ação sobrescreva o status do motorista com timestamp mais novo)
   }
+}
+// Grava UM único entry de driverStatus no Firebase — chamado apenas quando o status muda de fato
+function _fbWriteDs(statusKey,dsObj){
+  if(!_fbDb||!ST.selectedDate)return;
+  _fbDb.ref('cdl_driverStatus/'+ST.selectedDate+'/'+statusKey).set({...dsObj,_savedAt:new Date().toISOString()}).catch(()=>{});
 }
 function load(){
   try{
@@ -1831,6 +1827,7 @@ function deleteDay(date){
 function reativarDay(date){
   if(!ST.finalizedDates)return;
   ST.finalizedDates=ST.finalizedDates.filter(d=>d!==date);
+  if(_fbDb)_fbDb.ref('cdl_state/finalizedDates').set(ST.finalizedDates).catch(()=>{});
   save();renderSidebar();toast('Dia reativado','ok');
 }
 
@@ -1838,10 +1835,9 @@ function finalizeDay(date){
   if(!confirm('Finalizar o dia '+fmtDate(date)+'?\nEle será movido para "Finalizados" e ficará disponível para consulta.'))return;
   if(!ST.finalizedDates)ST.finalizedDates=[];
   if(!ST.finalizedDates.includes(date))ST.finalizedDates.push(date);
-  finSectionOpen=true; // open finalized section to show newly added
-  save();
-  renderSidebar();
-  toast('Dia finalizado!','ok');
+  finSectionOpen=true;
+  if(_fbDb)_fbDb.ref('cdl_state/finalizedDates').set(ST.finalizedDates).catch(()=>{});
+  save();renderSidebar();toast('Dia finalizado!','ok');
 }
 
 function selectDate(date){
@@ -4830,6 +4826,7 @@ function setDriverStatus(statusKey,status,recebidoPor){
   const _sdsNew=recebidoPor?{status,recebidoPor}:{status};
   if(_sdsChks&&status!=='pendente')_sdsNew.prodChecks=_sdsChks;
   plan.driverStatus[statusKey]=_sdsNew;
+  _fbWriteDs(statusKey,_sdsNew);
   const _statusLabels2={pendente:'Pendente',a_caminho:'A caminho',entregue:'Entregue',nao_entregue:'Não entregue'};
   const [_dsPer,_dsIdx]=statusKey.split('_');
   const _dsStop=curPlan()?.[_dsPer]?.stops?.[+_dsIdx];
@@ -4910,7 +4907,7 @@ function iniciarEntrega(statusKey, delivId){
     const _ivPrev=plan.driverStatus[statusKey];
     const _ivChks=typeof _ivPrev==='object'?(_ivPrev.prodChecks||null):null;
     plan.driverStatus[statusKey]=_ivChks?{status:'a_caminho',prodChecks:_ivChks}:{status:'a_caminho'};
-    save();renderDriverView();return;
+    _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();renderDriverView();return;
   }
   const vBtns=veiculos.map(v=>
     '<button onclick="selecionarVeicIniciar(\''+statusKey+'\',\''+delivId+'\',\''+v.id+'\')" style="display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:8px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font-size:0.9rem"><strong>'+esc(v.modelo)+'</strong> — '+esc(v.placa)+(v.estado?' ('+v.estado+')':'')+'</button>'
@@ -4928,6 +4925,7 @@ function selecionarVeicIniciar(statusKey, delivId, veicId){
   const _sviPrev=plan.driverStatus[statusKey];
   const _sviChks=typeof _sviPrev==='object'?(_sviPrev.prodChecks||null):null;
   plan.driverStatus[statusKey]={status:'a_caminho',veicId,mdfeSent:false,driverId:selDrvId,iniciadoEm:new Date().toISOString(),...(_sviChks?{prodChecks:_sviChks}:{})};
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);
   const veic=getVeiculos().find(v=>v.id===veicId);
   if(veic){const d=ST.deliveries.find(x=>x.id===delivId);if(d){_setVeicObs(d,veic,'notasMotorista');}}
   save();renderDriverView();
@@ -4956,7 +4954,7 @@ function enviarMdfeIniciar(statusKey, delivId){
   if(plan&&plan.driverStatus&&typeof plan.driverStatus[statusKey]==='object'){
     plan.driverStatus[statusKey].mdfeSent=true;
     if(!plan.driverStatus[statusKey].iniciadoEm) plan.driverStatus[statusKey].iniciadoEm=now.toISOString();
-    save();renderDriverView();
+    _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();renderDriverView();
   }
 }
 function mostrarFinalizacao(statusKey, delivId){
@@ -5047,7 +5045,7 @@ function confirmarEntregue(statusKey, delivId){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'entregue',recebidoPor:nome,finalizadoEm:new Date().toISOString()};
-  save();
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();
   const w2=document.getElementById('fin-form-'+statusKey);
   if(w2)w2.innerHTML='<div style="margin-top:8px;padding:14px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;text-align:center;font-size:0.95rem;font-weight:700;color:#15803d">✅ Card finalizado com sucesso!</div>';
   else renderDriverView();
@@ -5078,7 +5076,7 @@ function confirmarNaoEntregue(statusKey){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'nao_entregue',motivo,finalizadoEm:new Date().toISOString()};
-  save();renderDriverView();
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();renderDriverView();
 }
 
 // ── Locais de Coleta ──────────────────────────────────────────
@@ -5767,6 +5765,8 @@ function markColetasStatus(delivId,val){
   const idx=ST.deliveries.findIndex(x=>x.id===delivId);
   if(idx<0)return;
   ST.deliveries[idx].coletasProvidenciadas=val;
+  ST.deliveries[idx].updatedAt=new Date().toISOString();
+  if(_fbDb)_fbDb.ref('cdl_state/deliveries/'+delivId).set(ST.deliveries[idx]).catch(()=>{});
   save();renderCards();
   toast(val?'Coletas/transferências marcadas como providenciadas':'Status revertido','ok');
 }
@@ -6934,17 +6934,15 @@ function _finalizarTransfDia(date){
   if(!confirm('Finalizar o dia '+date.split('-').reverse().join('/')+'?\nEle sera movido para o Historico.')) return;
   if(!ST.finalizedDates) ST.finalizedDates=[];
   if(!ST.finalizedDates.includes(date)) ST.finalizedDates.push(date);
-  save();
-  _renderTransfSidebar(_transfDates());
-  toast('Dia finalizado!','ok');
+  if(_fbDb)_fbDb.ref('cdl_state/finalizedDates').set(ST.finalizedDates).catch(()=>{});
+  save();_renderTransfSidebar(_transfDates());toast('Dia finalizado!','ok');
 }
 
 function _reativarTransfDia(date){
   if(!ST.finalizedDates) return;
   ST.finalizedDates = ST.finalizedDates.filter(d=>d!==date);
-  save();
-  _renderTransfSidebar(_transfDates());
-  toast('Dia reativado','ok');
+  if(_fbDb)_fbDb.ref('cdl_state/finalizedDates').set(ST.finalizedDates).catch(()=>{});
+  save();_renderTransfSidebar(_transfDates());toast('Dia reativado','ok');
 }
 
 function _toggleTransfMenu(id){
