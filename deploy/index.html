@@ -1686,8 +1686,9 @@ function save(){
 }
 // Grava UM único entry de driverStatus no Firebase — chamado apenas quando o status muda de fato
 function _fbWriteDs(statusKey,dsObj){
-  if(!_fbDb||!ST.selectedDate)return;
-  _fbDb.ref('cdl_driverStatus/'+ST.selectedDate+'/'+statusKey).set({...dsObj,_savedAt:new Date().toISOString()}).catch(()=>{});
+  const _dsDate=_drvDate||ST.selectedDate;
+  if(!_fbDb||!_dsDate)return;
+  _fbDb.ref('cdl_driverStatus/'+_dsDate+'/'+statusKey).set({...dsObj,_savedAt:new Date().toISOString()}).catch(()=>{});
 }
 // Salva apenas no localStorage — usado pelo motorista para não sobrescrever dados de outras abas no Firebase
 function _saveLocalOnly(){try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}}
