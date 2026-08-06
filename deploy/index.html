@@ -1288,9 +1288,11 @@ function _applyState(s){
       const _lTs=_locP._routeStructureAt||'';
       const _sSv=_srvP._savedAt||'';
       const _lSv=_locP._savedAt||'';
-      // Servidor mais recente em estrutura → aplica servidor
+      // Servidor mais recente em estrutura → aplica servidor (mas preserva driverStatus local)
       if(_sTs>_lTs){
+        const _pDs=_locP.driverStatus; // preserva status do motorista — nunca vem do servidor de routePlan
         ST.routePlans[date]=_srvP;
+        if(_pDs)ST.routePlans[date].driverStatus=_pDs;
         // Limpa cache de recalc — nova estrutura recebida do servidor exige novo cálculo
         _legRecalcDone.delete(date+'-manha');_legRecalcDone.delete(date+'-tarde');
         _transfRecalcDone.delete(date+'-transf-manha');_transfRecalcDone.delete(date+'-transf-tarde');
@@ -1299,7 +1301,9 @@ function _applyState(s){
         // sem ação: versão local mais nova já está no Firebase via save() que chamou _markRouteModified
       // Mesma estrutura: desempata por _savedAt
       } else if(_sSv>_lSv){
+        const _pDs=_locP.driverStatus;
         ST.routePlans[date]=_srvP;
+        if(_pDs)ST.routePlans[date].driverStatus=_pDs;
         _legRecalcDone.delete(date+'-manha');_legRecalcDone.delete(date+'-tarde');
       }
       // else: timestamps iguais ou local mais recente em _savedAt — mantém local
@@ -1667,7 +1671,10 @@ function save(){
     _routeDirtyDates.forEach(dt=>{
       if(ST.routePlans[dt]){
         ST.routePlans[dt]._savedAt=_now2;
-        _upd['routePlans/'+dt]=ST.routePlans[dt];
+        // Exclui driverStatus da escrita — motorista gerencia pelo caminho exclusivo cdl_driverStatus
+        // Isso impede que qualquer ação do admin sobrescreva o status do motorista
+        const {driverStatus:_ds,..._planFb}=ST.routePlans[dt];
+        _upd['routePlans/'+dt]=_planFb;
       }
     });
     _fbDb.ref('cdl_state').update(_upd).then(()=>{
@@ -1682,6 +1689,8 @@ function _fbWriteDs(statusKey,dsObj){
   if(!_fbDb||!ST.selectedDate)return;
   _fbDb.ref('cdl_driverStatus/'+ST.selectedDate+'/'+statusKey).set({...dsObj,_savedAt:new Date().toISOString()}).catch(()=>{});
 }
+// Salva apenas no localStorage — usado pelo motorista para não sobrescrever dados de outras abas no Firebase
+function _saveLocalOnly(){try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}}
 function load(){
   try{
     const r=localStorage.getItem(SKEY);if(!r)return;
@@ -4325,9 +4334,10 @@ function selecionarVeicTC(statusKey, tcId, veicId){
   const prev=plan.driverStatus[statusKey];
   const prevChks=typeof prev==='object'?(prev.prodChecks||null):null;
   plan.driverStatus[statusKey]={status:'a_caminho',veicId,driverId:selDrvId,iniciadoEm:new Date().toISOString(),...(prevChks?{prodChecks:prevChks}:{})};
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);
   const veic=getVeiculos().find(v=>v.id===veicId);
   if(veic){const tc=(ST.transfers||[]).find(x=>x.id===tcId);if(tc){_setVeicObs(tc,veic,'obs');}}
-  save();renderDriverView();
+  _saveLocalOnly();renderDriverView();
 }
 function finalizarTC(statusKey, tcId){
   const plan=curPlan();if(!plan)return;
@@ -4346,7 +4356,7 @@ function finalizarTC(statusKey, tcId){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?{...cur}:{};
   plan.driverStatus[statusKey]={...prev,status:'entregue',finalizadoEm:new Date().toISOString()};
-  save();renderDriverView();
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);_saveLocalOnly();renderDriverView();
   toast('Transferência finalizada!','ok');
 }
 function clickACaminho(statusKey, delivId){
@@ -4384,10 +4394,10 @@ function selecionarVeicACaminho(statusKey, delivId, veicId){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'a_caminho',veicId};
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);
   const veic=getVeiculos().find(v=>v.id===veicId);
   if(veic){const d=ST.deliveries.find(x=>x.id===delivId);if(d){_setVeicObs(d,veic,'notasMotorista');}}
-  save();
-  renderDriverView();
+  _saveLocalOnly();renderDriverView();
   const cb=document.getElementById('mdfe-modal-confirm');
   if(cb)cb.style.display='';
 }
@@ -4835,7 +4845,7 @@ function setDriverStatus(statusKey,status,recebidoPor){
   const _dsCliente=_dsD?.cliente||statusKey;
   const _dsRecMsg=recebidoPor?' (recebido por '+recebidoPor+')':'';
   _logAudit('status','Status de "'+_dsCliente+'" → '+(_statusLabels2[status]||status)+_dsRecMsg,ST.selectedDate);
-  save();
+  _saveLocalOnly();
   renderDriverView();
   const pg=document.getElementById('page-gestao');
   if(pg&&pg.style.display!=='none'){renderCards();renderRouteSection();}
@@ -4878,7 +4888,7 @@ function marcarTodosCheck(statusKey, total){
   const allChk=Object.keys(prev.prodChecks).length===total&&Object.values(prev.prodChecks).every(Boolean);
   for(let i=0;i<total;i++)prev.prodChecks[i]=!allChk;
   plan.driverStatus[statusKey]=prev;
-  save();renderDriverView();
+  _fbWriteDs(statusKey,prev);_saveLocalOnly();renderDriverView();
 }
 function toggleDrvProdCheck(statusKey, prodIdx, cb){
   const plan=curPlan();if(!plan)return;
@@ -4888,7 +4898,8 @@ function toggleDrvProdCheck(statusKey, prodIdx, cb){
   if(!prev.prodChecks)prev.prodChecks={};
   prev.prodChecks[prodIdx]=cb.checked;
   plan.driverStatus[statusKey]=prev;
-  save();
+  _fbWriteDs(statusKey,prev);
+  _saveLocalOnly();
   renderDriverView();
 }
 function iniciarEntrega(statusKey, delivId){
@@ -4908,7 +4919,7 @@ function iniciarEntrega(statusKey, delivId){
     const _ivPrev=plan.driverStatus[statusKey];
     const _ivChks=typeof _ivPrev==='object'?(_ivPrev.prodChecks||null):null;
     plan.driverStatus[statusKey]=_ivChks?{status:'a_caminho',prodChecks:_ivChks}:{status:'a_caminho'};
-    _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();renderDriverView();return;
+    _fbWriteDs(statusKey,plan.driverStatus[statusKey]);_saveLocalOnly();renderDriverView();return;
   }
   const vBtns=veiculos.map(v=>
     '<button onclick="selecionarVeicIniciar(\''+statusKey+'\',\''+delivId+'\',\''+v.id+'\')" style="display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:8px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font-size:0.9rem"><strong>'+esc(v.modelo)+'</strong> — '+esc(v.placa)+(v.estado?' ('+v.estado+')':'')+'</button>'
@@ -4929,7 +4940,7 @@ function selecionarVeicIniciar(statusKey, delivId, veicId){
   _fbWriteDs(statusKey,plan.driverStatus[statusKey]);
   const veic=getVeiculos().find(v=>v.id===veicId);
   if(veic){const d=ST.deliveries.find(x=>x.id===delivId);if(d){_setVeicObs(d,veic,'notasMotorista');}}
-  save();renderDriverView();
+  _saveLocalOnly();renderDriverView();
   const cb=document.getElementById('mdfe-modal-confirm');if(cb)cb.style.display='';
 }
 function enviarMdfeIniciar(statusKey, delivId){
@@ -4955,7 +4966,7 @@ function enviarMdfeIniciar(statusKey, delivId){
   if(plan&&plan.driverStatus&&typeof plan.driverStatus[statusKey]==='object'){
     plan.driverStatus[statusKey].mdfeSent=true;
     if(!plan.driverStatus[statusKey].iniciadoEm) plan.driverStatus[statusKey].iniciadoEm=now.toISOString();
-    _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();renderDriverView();
+    _fbWriteDs(statusKey,plan.driverStatus[statusKey]);_saveLocalOnly();renderDriverView();
   }
 }
 function mostrarFinalizacao(statusKey, delivId){
@@ -5046,7 +5057,7 @@ function confirmarEntregue(statusKey, delivId){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'entregue',recebidoPor:nome,finalizadoEm:new Date().toISOString()};
-  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);_saveLocalOnly();
   const w2=document.getElementById('fin-form-'+statusKey);
   if(w2)w2.innerHTML='<div style="margin-top:8px;padding:14px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;text-align:center;font-size:0.95rem;font-weight:700;color:#15803d">✅ Card finalizado com sucesso!</div>';
   else renderDriverView();
@@ -5077,7 +5088,7 @@ function confirmarNaoEntregue(statusKey){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'nao_entregue',motivo,finalizadoEm:new Date().toISOString()};
-  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);save();renderDriverView();
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);_saveLocalOnly();renderDriverView();
 }
 
 // ── Locais de Coleta ──────────────────────────────────────────
