@@ -1655,7 +1655,8 @@ function save(){
     // update() em vez de set() — preserva cdl_state/files/ que o set() apagaria
     // Apenas metadados globais — itens individuais são escritos diretamente por path
     const _upd={
-      finalizedDates:ST.finalizedDates||[],
+      // finalizedDates NÃO entra aqui — gerenciado exclusivamente por finalizeDay/reativarDay
+      // Isso evita que um dispositivo com estado antigo sobrescreva dias finalizados por outros
       deletedTcIds:ST.deletedTcIds||[],
       deletedDeliveryIds:ST.deletedDeliveryIds||[]
     };
