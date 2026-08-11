@@ -5012,7 +5012,7 @@ function encerrarMdfeConfirmar(statusKey, delivId){
   const cur=plan.driverStatus[statusKey];
   const prev=typeof cur==='object'?cur:{};
   plan.driverStatus[statusKey]={...prev,status:'entregue',recebidoPor:nome,finalizadoEm:new Date().toISOString()};
-  save();
+  _fbWriteDs(statusKey,plan.driverStatus[statusKey]);_saveLocalOnly();
   const wpp=getMdfeWhatsapp();
   const d=ST.deliveries.find(x=>x.id===delivId);
   if(d&&wpp){
