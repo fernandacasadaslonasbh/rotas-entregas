@@ -8959,6 +8959,7 @@ function addTcToRoute(tcId, routeType, per){
     const tc=(ST.transfers||[]).find(x=>x.id===tcId);
     const perKey=per;
     if(!plan[perKey])plan[perKey]={stops:[],legDurs:[],legDists:[]};
+    if(!plan[perKey].stops)plan[perKey].stops=[];
     const stops=plan[perKey].stops;
     // Insert before the return stop if it exists
     const retIdx=stops.findLastIndex?stops.findLastIndex(s=>s.type==='return'):stops.reduceRight((acc,s,i)=>acc===-1&&s.type==='return'?i:acc,-1);
@@ -9180,4 +9181,29 @@ function addTcToRoute(tcId, routeType, per){
     </div>
   </div><!-- fim .modal -->
 </div><!-- fim #tcOverlay -->
+<script>
+(function(){
+  const _BUILD_KEY='cdl_build';
+  const _BUILD_CURRENT='20260824133025';
+  // Salva build atual se ainda não tem
+  if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
+  function _checkBuild(){
+    fetch('/version.json?_='+Date.now())
+      .then(r=>r.json())
+      .then(data=>{
+        const _latest=data&&data.build;
+        if(!_latest)return;
+        const _stored=localStorage.getItem(_BUILD_KEY);
+        if(_stored&&_latest>_stored){
+          localStorage.setItem(_BUILD_KEY,_latest);
+          // Força reload sem cache
+          location.href=location.href.split('?')[0]+'?v='+_latest;
+        }
+      }).catch(()=>{});
+  }
+  // Verifica ao carregar e a cada 60s
+  setTimeout(_checkBuild,3000);
+  setInterval(_checkBuild,60000);
+})();
+</script>
 </body></html>
