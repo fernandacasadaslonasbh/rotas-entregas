@@ -1698,7 +1698,19 @@ function load(){
     _applyState(JSON.parse(r));
   }catch(e){}
 }
-function getBC(){try{return JSON.parse(localStorage.getItem(BKEY))||{}}catch(e){return{}}}
+const _BASE_COORDS_DEFAULT={
+  CD:     {lat:-19.967743,  lng:-44.0266471},
+  Matriz: {lat:-19.9291155, lng:-43.9710419},
+  Filial: {lat:-19.9052677, lng:-43.985316}
+};
+function getBC(){
+  try{
+    const _bc=JSON.parse(localStorage.getItem(BKEY))||{};
+    // Garante coords padrão para bases principais (fallback se geocoding falhar)
+    for(const k of['CD','Matriz','Filial']){if(!_bc[k]||!_bc[k].lat)_bc[k]=_BASE_COORDS_DEFAULT[k];}
+    return _bc;
+  }catch(e){return{..._BASE_COORDS_DEFAULT};}
+}
 function saveBC(c){try{localStorage.setItem(BKEY,JSON.stringify(c))}catch(e){}}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
@@ -9213,7 +9225,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902145517';
+  const _BUILD_CURRENT='20260902150757';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
