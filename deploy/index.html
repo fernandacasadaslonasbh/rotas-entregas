@@ -2376,6 +2376,7 @@ async function recalcPer(perName){
       const _d=ST.deliveries.find(x=>x.id===s.id);
       if(_d){
         const _coLink=_d.mapsLink?coordsFromUrl(_d.mapsLink):null;
+        console.log('[recalcPer] delivery',_d.cliente,'mapsLink=',_d.mapsLink,'coordsExtraidos=',_coLink,'coordsAtuais=',_d.coords);
         if(_coLink){
           // mapsLink válido → sempre usa (sobrepõe coords antigos de geocoding)
           _d.coords=_coLink;const _idxL=ST.deliveries.findIndex(x=>x.id===s.id);if(_idxL>=0)ST.deliveries[_idxL].coords=_coLink;
@@ -9194,7 +9195,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902130049';
+  const _BUILD_CURRENT='20260902131953';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
