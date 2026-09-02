@@ -2217,7 +2217,7 @@ function renderRoutePanels(){
       if(_legRecalcDone.has(_key))return;
       const _pd=plan[per];
       if(!_pd||(_pd.stops||[]).length<=1)return;
-      const _bad=!_pd.legDurs||!_pd.legDurs.length||_pd.legDurs[0]===0;
+      const _bad=!_pd.legDurs||!_pd.legDurs.length||_pd.legDurs[0]===0||_pd.legDurs.length<(_pd.stops.length-1);
       if(_bad){_legRecalcDone.add(_key);
         setTimeout(()=>recalcPer(per).then(()=>{save();reRenderPanels();}).catch(()=>{}),400);
       }
@@ -5737,7 +5737,9 @@ initCustomBases();
 
 // Auth check inside initFirebase; load/render/Firebase called after login
 initFirebase();
-_configReady=fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled){_mapsEnabled=true;const _bc=getBC();['CD','Matriz','Filial'].forEach(k=>{if(_bc[k])delete _bc[k];});saveBC(_bc);try{renderRouteSection();}catch(e){}try{renderTransfPanels();}catch(e){}}}).catch(()=>{});
+_configReady=fetch('/api/config').then(r=>r.json()).then(cfg=>{if(cfg&&cfg.mapsEnabled){_mapsEnabled=true;const _bc=getBC();['CD','Matriz','Filial'].forEach(k=>{if(_bc[k])delete _bc[k];});saveBC(_bc);try{renderRouteSection();}catch(e){}try{renderTransfPanels();}catch(e){}// Recalcular todas as rotas agora que Google Maps está disponível
+const _planC=curPlan();if(_planC){['manha','tarde'].forEach(per=>{if((_planC[per]?.stops||[]).length>=2){setTimeout(()=>recalcPer(per).then(()=>{save();reRenderPanels();}).catch(()=>{}),800);}});}
+}}).catch(()=>{});
 document.getElementById('nomeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNome();});
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -9200,7 +9202,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902153556';
+  const _BUILD_CURRENT='20260902155101';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
