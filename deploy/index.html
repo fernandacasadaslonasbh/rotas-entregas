@@ -9066,7 +9066,7 @@ function addTcToRoute(tcId, routeType, per){
             <option value="Matriz">Matriz</option>
             <option value="Filial">Filial</option>
             <option value="CD">CD</option>
-            <option value="Cliente">Endereço do Cliente</option>
+            <option value="Cliente">Outro</option>
           </select>
           <div id="tcDestinoAddr" style="display:none;margin-top:6px;font-size:0.8rem;color:#1e40af;background:#dbeafe;border-radius:6px;padding:5px 10px">📍 <span id="tcDestinoAddrText"></span></div>
           <!-- Campos extras quando destino = Cliente -->
@@ -9242,7 +9242,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902162411';
+  const _BUILD_CURRENT='20260902162522';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
