@@ -2371,15 +2371,20 @@ async function recalcPer(perName){
     if((s.type==='start'||s.type==='return'||s.type==='pickup')&&s.key&&BASES[s.key]&&!bc[s.key]){
       try{const co=await geocode(BASES[s.key].addr);if(co){bc[s.key]=co;saveBC(bc);}}catch(e){}
     }
-    // Entregas: geocodificar se não tiver coords
+    // Entregas: sempre preferir mapsLink; só geocodificar se não tiver coords
     if(s.type==='delivery'&&s.id){
       const _d=ST.deliveries.find(x=>x.id===s.id);
-      if(_d&&!_d.coords){
-        try{
-          let co=_d.mapsLink?coordsFromUrl(_d.mapsLink):null;
-          if(!co&&hasAddr(_d))co=await geocode(bAddr(_d));
-          if(co){_d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===s.id);if(idx>=0)ST.deliveries[idx].coords=co;}
-        }catch(e){}
+      if(_d){
+        const _coLink=_d.mapsLink?coordsFromUrl(_d.mapsLink):null;
+        if(_coLink){
+          // mapsLink válido → sempre usa (sobrepõe coords antigos de geocoding)
+          _d.coords=_coLink;const _idxL=ST.deliveries.findIndex(x=>x.id===s.id);if(_idxL>=0)ST.deliveries[_idxL].coords=_coLink;
+        } else if(!_d.coords){
+          try{
+            let co=hasAddr(_d)?await geocode(bAddr(_d)):null;
+            if(co){_d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===s.id);if(idx>=0)ST.deliveries[idx].coords=co;}
+          }catch(e){}
+        }
       }
     }
     // Custom stops sem coords
@@ -2847,7 +2852,7 @@ async function runRouteGeneration(){
   if(!all.length){toast('Sem entregas para este dia','err');return;}
   showL('Geocodificando endereços...');
   try{
-    for(let i=0;i<all.length;i++){const d=all[i];if(!d.coords){setLm(`Geocodificando ${i+1}/${all.length}...`);let co=d.mapsLink?coordsFromUrl(d.mapsLink):null;if(!co&&hasAddr(d))co=await geocode(bAddr(d));if(co){d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===d.id);if(idx>=0)ST.deliveries[idx].coords=co;}}}
+    for(let i=0;i<all.length;i++){const d=all[i];setLm(`Geocodificando ${i+1}/${all.length}...`);const _cl=d.mapsLink?coordsFromUrl(d.mapsLink):null;if(_cl){d.coords=_cl;const _ix=ST.deliveries.findIndex(x=>x.id===d.id);if(_ix>=0)ST.deliveries[_ix].coords=_cl;}else if(!d.coords){let co=hasAddr(d)?await geocode(bAddr(d)):null;if(co){d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===d.id);if(idx>=0)ST.deliveries[idx].coords=co;}}}
     setLm('Geocodificando bases...');
     await ensureBase('CD');if(!GOOGLE_MAPS_API_KEY)await sleep(1200);await ensureBase('Matriz');if(!GOOGLE_MAPS_API_KEY)await sleep(1200);await ensureBase('Filial');
     const manha=all.filter(d=>d.periodo==='manha'),tarde=all.filter(d=>d.periodo==='tarde'),flex=all.filter(d=>d.periodo==='flexivel');
@@ -9189,7 +9194,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260824142550';
+  const _BUILD_CURRENT='20260902130049';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
