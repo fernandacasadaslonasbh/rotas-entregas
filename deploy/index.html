@@ -2436,36 +2436,12 @@ async function recalcPer(perName){
   {let _v=null;for(let i=ptsRaw.length-1;i>=0;i--){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
   const pts=ptsRaw;
   if(pts.filter(Boolean).length<2)return;
-  const hasReturn=perData.stops[perData.stops.length-1]?.type==='return';
-  const ptsMain=hasReturn?pts.slice(0,-1):pts;
-  const retPt=hasReturn?pts[pts.length-1]:null;
+  // Inclui retorno no osrmRoute principal — elimina chamada separada que frequentemente falha
   let totalDist=0,totalDur=0,legDurs=[],legDists=[];
-  if(ptsMain.length>=2){
-    const res=await osrmRoute(ptsMain);
+  if(pts.length>=2){
+    const res=await osrmRoute(pts);
     if(res){
       totalDist=res.dist;totalDur=res.dur;legDurs=res.legs||[];legDists=res.legDists||[];
-      if(retPt){
-        const lastPt=ptsMain[ptsMain.length-1];
-        let retRes=null;
-        if(GOOGLE_MAPS_API_KEY){retRes=await googleRoute([lastPt,retPt]);}
-        if(!retRes){
-          try{
-            const u=`https://router.project-osrm.org/route/v1/driving/${lastPt.lng},${lastPt.lat};${retPt.lng},${retPt.lat}?overview=false`;
-            const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),8000);
-            const r=await fetch(u,{signal:ctrl.signal});clearTimeout(t);
-            const d=await r.json();
-            if(d.code==='Ok'&&d.routes[0]){
-              const leg=d.routes[0].legs[0];
-              retRes={dist:Math.round(leg.distance),dur:Math.round(leg.duration*FATOR_TRANSITO),legs:[Math.round(leg.duration*FATOR_TRANSITO)],legDists:[Math.round(leg.distance)]};
-            }
-          }catch(e){console.warn('recalcPer return leg:',e.message);}
-        }
-        if(retRes){
-          totalDist+=retRes.dist;totalDur+=retRes.dur;
-          legDurs=[...legDurs,retRes.legs[0]||0];
-          legDists=[...legDists,retRes.legDists[0]||0];
-        }
-      }
     }
   }
   // Só atualiza se o cálculo retornou dados válidos — evita sobrescrever com zeros em caso de falha de rede
@@ -3308,7 +3284,6 @@ function remStop(per,idx){
   else if(s.key)lbl=BASES[s.key]?.label||s.key;
   curPlan()[per].stops.splice(idx,1);
   addRouteHistorico(`Parada removida: ${lbl}`,editingBy||'Sistema');
-  curPlan()[per].legDurs=[];curPlan()[per].legDists=[];curPlan()[per].totalDist=0;curPlan()[per].totalDur=0;
   _markRouteModified();save();reRenderPanels();
   showL('Recalculando distâncias...');
   recalcPer(per).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
@@ -9225,7 +9200,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902150757';
+  const _BUILD_CURRENT='20260902152352';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
