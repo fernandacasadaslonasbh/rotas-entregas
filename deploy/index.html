@@ -3049,7 +3049,13 @@ function salvarRota(){
   _releaseRouteLock();
   editingRoute=false;editingBy='';
   _logAudit('rota','Salvou alterações na rota de '+fmtDate(ST.selectedDate),ST.selectedDate);
-  _markRouteModified();save();renderRouteSection();toast('Rota salva!','ok');
+  _markRouteModified();save();renderRouteSection();toast('Rota salva! Recalculando distâncias...','ok');
+  const plan=curPlan();
+  const _pers=['manha','tarde'].filter(p=>plan&&plan[p]&&plan[p].stops&&plan[p].stops.length>=2);
+  if(_pers.length){
+    showL('Recalculando distâncias...');
+    Promise.all(_pers.map(p=>recalcPer(p))).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
+  }
 }
 function cancelarEdicao(){
   _releaseRouteLock();
@@ -9202,7 +9208,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902134357';
+  const _BUILD_CURRENT='20260902142401';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
