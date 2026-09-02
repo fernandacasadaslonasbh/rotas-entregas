@@ -2348,7 +2348,7 @@ function stopMeta(s){
   if(s.type==='return'){return{icon:'🏠',name:'Retorno ao CD',sub:'',just:''};}
   if(s.type==='pickup'){const b=BASES[s.key]||{};return{icon:'📦',name:'Coleta: '+(b.label||s.key),sub:b.addr||'',just:''};}
   if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);if(!d)return{icon:'📍',name:'(removido)',sub:'',just:''};return{icon:'🏠',name:d.cliente||'(sem nome)',sub:bAddr(d)||d.mapsLink||'',just:''};}
-  if(s.type==='tc'){const tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!tc)return{icon:'📋',name:'(removido)',sub:'',just:''};const grps=_tcRouteGroups(tc);const _destAddr=(tc.pontoDestino&&tc.pontoDestino!=='Cliente'&&BASES[tc.pontoDestino])?BASES[tc.pontoDestino].addr:'';const _sub=[_destAddr,grps].filter(Boolean).join(' · ');return{icon:'🚛',name:tc.titulo||'Transf./Coleta',sub:_sub,just:tc.obs||''};}
+  if(s.type==='tc'){const tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!tc)return{icon:'📋',name:'(removido)',sub:'',just:''};const grps=_tcRouteGroups(tc);const _destAddr=(tc.pontoDestino&&tc.pontoDestino!=='Cliente'&&BASES[tc.pontoDestino])?BASES[tc.pontoDestino].addr:(tc.pontoDestino==='Cliente'?(tc.clienteAddr||tc.clienteMapsLink||''):'');const _sub=[_destAddr,grps].filter(Boolean).join(' · ');return{icon:'🚛',name:tc.titulo||'Transf./Coleta',sub:_sub,just:tc.obs||''};}
   if(s.type==='custom'){if(s.key&&BASES[s.key]){const b=BASES[s.key];return{icon:'📍',name:b.label,sub:b.addr,just:s.just||''};}return{icon:'📍',name:s.label||s.addr||'Parada',sub:s.addr||'',just:s.just||''};}
   if(s.type==='waypoint'){const b=BASES[s.key]||{};return{icon:'📍',name:b.label||s.key,sub:b.addr||'',just:''};}
   return{icon:'📍',name:s.label||'Parada',sub:'',just:''};
@@ -2423,8 +2423,15 @@ async function recalcPer(perName){
     if(s.type==='tc'){
       const _tc=(ST.transfers||[]).find(x=>x.id===s.tcId);if(!_tc)return null;
       const _d=_tc.pontoDestino,_src=_tc.pontoSaida;
-      // Tenta destino; se for Cliente, usa origem (base de coleta)
+      // Destino = base conhecida
       if(_d&&_d!=='Cliente'&&bc[_d])return bc[_d];
+      // Destino = Cliente → usa coords do mapsLink ou endereço salvo
+      if(_d==='Cliente'){
+        const _cl=_tc.clienteMapsLink?coordsFromUrl(_tc.clienteMapsLink):null;
+        if(_cl)return _cl;
+        if(_tc.clienteCoords)return _tc.clienteCoords;
+      }
+      // Fallback: origem (base de coleta)
       if(_src&&_src!=='Cliente'&&bc[_src])return bc[_src];
       return null;
     }
@@ -5866,10 +5873,10 @@ function openTcForm(){
   document.getElementById('tcTitle').textContent='Nova Transferência / Coleta';
   const _btnDel0=document.getElementById('tcBtnDel');if(_btnDel0)_btnDel0.style.display='none';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-  sf('tcTitulo','');sf('tcData',ST.selectedDate||'');sf('tcObs','');sf('tcAntesEntrega','');sf('tcPontoDestino','');
+  sf('tcTitulo','');sf('tcData',ST.selectedDate||'');sf('tcObs','');sf('tcAntesEntrega','');sf('tcPontoDestino','');sf('tcClienteDestinoAddr','');sf('tcClienteDestinoMaps','');
   const _tcHistWrapNew=document.getElementById('tcAutorHistWrap');if(_tcHistWrapNew)_tcHistWrapNew.style.display='none';
   const chk=document.getElementById('tcTagImportante');if(chk)chk.checked=false;
-  resetTcTipo();onTcTipoChange();
+  resetTcTipo();onTcTipoChange();onTcDestinoChange();
   _tcFillClientesList();
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
@@ -5991,7 +5998,7 @@ function openEditTcCard(id){
   }else if(_tcHistWrap){_tcHistWrap.style.display='none';}
   const chkE=document.getElementById('tcTagImportante');if(chkE)chkE.checked=!!tc.tagImportante;
   resetTcTipo();if(tc.tipoTransf)setTcTipo(tc.tipoTransf);onTcTipoChange();
-  sf('tcPontoDestino',tc.pontoDestino||'');onTcDestinoChange();
+  sf('tcPontoDestino',tc.pontoDestino||'');sf('tcClienteDestinoAddr',tc.clienteAddr||'');sf('tcClienteDestinoMaps',tc.clienteMapsLink||'');onTcDestinoChange();
   _tcFillClientesList();
   sf('tcProdSku','');sf('tcProdSkuReal','');sf('tcProdNome','');sf('tcProdQtd','');
   sf('tcProdOrigem','CD');sf('tcProdDestFisico','CD');sf('tcProdDestNota','Filial');
@@ -6396,13 +6403,19 @@ function onTcDestinoChange(){
   const dest=(document.getElementById('tcPontoDestino')||{}).value||'';
   const addrBox=document.getElementById('tcDestinoAddr');
   const addrText=document.getElementById('tcDestinoAddrText');
+  const clienteBox=document.getElementById('tcClienteDestinoBox');
   if(!addrBox||!addrText)return;
   const loc=BASES[dest];
   if(dest&&dest!=='Cliente'&&loc&&loc.addr){
     addrText.textContent=loc.addr;
     addrBox.style.display='';
+    if(clienteBox)clienteBox.style.display='none';
+  } else if(dest==='Cliente'){
+    addrBox.style.display='none';
+    if(clienteBox)clienteBox.style.display='';
   } else {
     addrBox.style.display='none';
+    if(clienteBox)clienteBox.style.display='none';
   }
 }
 function saveTcCard(){
@@ -6419,7 +6432,11 @@ function saveTcCard(){
   const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const hoje=new Date().toLocaleDateString('pt-BR');
   const tagImp=!!(document.getElementById('tcTagImportante')||{}).checked;
-  const rec={id:tcEditId,titulo,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:gf('tcPontoDestino'),produtos:[..._tcProdutos]};
+  const _pontoDestino=gf('tcPontoDestino');
+  const _clienteAddr=_pontoDestino==='Cliente'?gf('tcClienteDestinoAddr'):'';
+  const _clienteMaps=_pontoDestino==='Cliente'?gf('tcClienteDestinoMaps'):'';
+  const _clienteCoords=_clienteMaps?coordsFromUrl(_clienteMaps):null;
+  const rec={id:tcEditId,titulo,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:_pontoDestino,clienteAddr:_clienteAddr,clienteMapsLink:_clienteMaps,clienteCoords:_clienteCoords||undefined,produtos:[..._tcProdutos]};
   if(!ST.transfers)ST.transfers=[];
   // Controle de concorrência: bloqueia se outro usuário modificou o card enquanto estava aberto
   if(!tcNewCard&&tcEditId&&_tcOpenedAt){
@@ -9049,9 +9066,21 @@ function addTcToRoute(tcId, routeType, per){
             <option value="Matriz">Matriz</option>
             <option value="Filial">Filial</option>
             <option value="CD">CD</option>
-            <option value="Cliente">Cliente</option>
+            <option value="Cliente">Endereço do Cliente</option>
           </select>
           <div id="tcDestinoAddr" style="display:none;margin-top:6px;font-size:0.8rem;color:#1e40af;background:#dbeafe;border-radius:6px;padding:5px 10px">📍 <span id="tcDestinoAddrText"></span></div>
+          <!-- Campos extras quando destino = Cliente -->
+          <div id="tcClienteDestinoBox" style="display:none;margin-top:8px">
+            <div class="fg" style="margin-bottom:6px">
+              <label style="font-size:0.8rem;color:#374151">Endereço do cliente <span style="color:#9ca3af;font-size:0.72rem">(opcional se informar o link)</span></label>
+              <input type="text" id="tcClienteDestinoAddr" placeholder="Rua, número, bairro, cidade">
+            </div>
+            <div class="fg" style="margin:0">
+              <label style="font-size:0.8rem;color:#374151">Link do Google Maps</label>
+              <input type="text" id="tcClienteDestinoMaps" placeholder="Cole aqui o link do Google Maps...">
+              <div style="font-size:0.72rem;color:#6b7280;margin-top:3px">💡 O cálculo da localização será feito colocando o link aqui</div>
+            </div>
+          </div>
         </div>
       </div>
       <!-- Produtos -->
@@ -9213,7 +9242,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902161550';
+  const _BUILD_CURRENT='20260902162411';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
