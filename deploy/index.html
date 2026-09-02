@@ -2412,17 +2412,16 @@ async function recalcPer(perName){
     }
     return null;
   });
-  // Verificar stops sem coordenadas — não faz null-fill (causaria leg=0 e apagaria dados dos outros)
-  const _missingSt=perData.stops.filter((s,i)=>!ptsRaw[i]&&s.type!=='waypoint');
-  if(_missingSt.length){
-    const _names=_missingSt.map(s=>{
-      if(s.type==='delivery'){const d=ST.deliveries.find(x=>x.id===s.id);return d?.cliente||'(card sem nome)';}
-      if(s.type==='custom')return s.label||s.addr||'Parada';
-      return s.key||s.type;
-    });
+  // Verificar entregas sem coordenadas (bases/custom sem coords usam null-fill controlado)
+  const _missingDeliveries=perData.stops.filter((s,i)=>!ptsRaw[i]&&s.type==='delivery');
+  if(_missingDeliveries.length){
+    const _names=_missingDeliveries.map(s=>{const d=ST.deliveries.find(x=>x.id===s.id);return d?.cliente||'(card sem nome)';});
     toast('⚠ Sem localização: '+_names.join(', ')+' — adicione endereço ou link do Maps','err');
     return; // Preserva legDurs existentes sem sobrescrever
   }
+  // Para stops não-entrega sem coords: null-fill com vizinho (bases/custom com endereço não geocodificado ainda)
+  {let _v=null;for(let i=0;i<ptsRaw.length;i++){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
+  {let _v=null;for(let i=ptsRaw.length-1;i>=0;i--){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
   const pts=ptsRaw;
   if(pts.filter(Boolean).length<2)return;
   const hasReturn=perData.stops[perData.stops.length-1]?.type==='return';
@@ -3284,7 +3283,6 @@ function confirmStop(){
   const stopLabel=stop.key?(BASES[stop.key]?.label||stop.key):(stop.addr||'parada');
   addRouteHistorico(`Parada adicionada: ${stopLabel}`,editingBy||'Sistema');
   _markRouteModified();closeStop();save();
-  curPlan()[insPer].legDurs=[];curPlan()[insPer].legDists=[];curPlan()[insPer].totalDist=0;curPlan()[insPer].totalDur=0;
   reRenderPanels();
   showL('Recalculando distâncias...');
   const basePromise=stop.key&&!getBC()[stop.key]?ensureBase(stop.key):Promise.resolve();
@@ -9215,7 +9213,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902143945';
+  const _BUILD_CURRENT='20260902145517';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
