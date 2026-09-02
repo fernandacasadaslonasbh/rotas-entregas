@@ -1112,6 +1112,10 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
             <input type="text" id="custAddr" placeholder="Rua, número, bairro, cidade">
           </div>
         </div>
+        <div class="fg" style="margin-top:8px">
+          <label>Link do Google Maps <span style="color:#9ca3af;font-size:0.75rem">(opcional — garante localização exata)</span></label>
+          <input type="text" id="custMapsLink" placeholder="Cole aqui o link do Google Maps...">
+        </div>
       </div>
       <div class="fg" style="margin-top:8px">
         <label>Motivo da parada <span style="color:#9ca3af;font-size:0.75rem">(opcional)</span></label>
@@ -2399,9 +2403,11 @@ async function recalcPer(perName){
         }
       }
     }
-    // Custom stops sem coords
-    if(s.type==='custom'&&s.addr&&!s.coords&&!s.key){
-      try{const co=await geocode(s.addr);if(co)s.coords=co;}catch(e){}
+    // Custom stops: preferir mapsLink; geocodificar endereço como fallback
+    if(s.type==='custom'&&!s.key){
+      const _clC=s.mapsLink?coordsFromUrl(s.mapsLink):null;
+      if(_clC){s.coords=_clC;}
+      else if(!s.coords&&s.addr){try{const co=await geocode(s.addr);if(co)s.coords=co;}catch(e){}}
     }
     // TC stops: garantir coords das bases
     if(s.type==='tc'){
@@ -3237,6 +3243,7 @@ function openStop(per,aft){
   document.getElementById('custBox').style.display='none';
   document.getElementById('custAddr').value='';
   document.getElementById('custCep').value='';
+  document.getElementById('custMapsLink').value='';
   document.getElementById('stopJust').value='';
   document.getElementById('sOverlay').style.display='flex';
 }
@@ -3260,8 +3267,12 @@ function confirmStop(){
   let stop;
   if(v==='custom'){
     const a=document.getElementById('custAddr').value.trim();
-    if(!a){toast('Informe o endereço','err');return;}
-    stop={type:'custom',addr:a,label:a};
+    const _ml=document.getElementById('custMapsLink').value.trim();
+    const _mlCoords=_ml?coordsFromUrl(_ml):null;
+    if(!a&&!_mlCoords){toast('Informe o endereço ou link do Google Maps','err');return;}
+    stop={type:'custom',addr:a||_ml,label:a||'Parada'};
+    if(_ml)stop.mapsLink=_ml;
+    if(_mlCoords)stop.coords=_mlCoords;
   }else{
     stop={type:'custom',key:v};
   }
@@ -9202,7 +9213,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902155101';
+  const _BUILD_CURRENT='20260902155822';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
