@@ -2360,10 +2360,11 @@ function addRouteHistorico(acao,nome){
   curPlan().routeHistorico.push({nome:nome||'Sistema',em:hoje+' '+now,acao});
 }
 async function recalcPer(perName){
+  console.log('[recalcPer] chamado para:',perName);
   const plan=curPlan();
-  if(!plan||!plan[perName])return;
+  if(!plan||!plan[perName]){console.log('[recalcPer] sem plan para',perName);return;}
   const perData=plan[perName];
-  if(!perData.stops||perData.stops.length<2)return;
+  if(!perData.stops||perData.stops.length<2){console.log('[recalcPer] stops insuficientes:',perData.stops?.length);return;}
   const bc=getBC();
   // Geocodificar todos os stops que precisam de coordenadas
   for(const s of perData.stops){
@@ -9195,7 +9196,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260902131953';
+  const _BUILD_CURRENT='20260902132841';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
