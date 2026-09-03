@@ -1102,6 +1102,10 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
         <label class="sopt"><input type="radio" name="st" value="custom" onchange="togCustom()"><span>Outro endereço</span></label>
       </div>
       <div id="custBox" style="display:none">
+        <div class="fg" style="margin-bottom:8px">
+          <label>Nome da parada <span style="color:#9ca3af;font-size:0.75rem">(ex: Filial Pedro II, Cliente X...)</span></label>
+          <input type="text" id="custLabel" placeholder="Como chamar esta parada no card do motorista">
+        </div>
         <div style="display:flex;gap:8px;align-items:flex-end">
           <div class="fg" style="flex:0 0 110px">
             <label>CEP</label>
@@ -3249,6 +3253,7 @@ function openStop(per,aft){
   insPer=per;insAfter=aft;
   document.querySelectorAll('input[name=st]')[0].checked=true;
   document.getElementById('custBox').style.display='none';
+  document.getElementById('custLabel').value='';
   document.getElementById('custAddr').value='';
   document.getElementById('custCep').value='';
   document.getElementById('custMapsLink').value='';
@@ -3276,9 +3281,10 @@ function confirmStop(){
   if(v==='custom'){
     const a=document.getElementById('custAddr').value.trim();
     const _ml=document.getElementById('custMapsLink').value.trim();
+    const _lbl=document.getElementById('custLabel').value.trim();
     const _mlCoords=_ml?coordsFromUrl(_ml):null;
     if(!a&&!_mlCoords){toast('Informe o endereço ou link do Google Maps','err');return;}
-    stop={type:'custom',addr:a||_ml,label:a||'Parada'};
+    stop={type:'custom',addr:a||_ml,label:_lbl||a||'Parada'};
     if(_ml)stop.mapsLink=_ml;
     if(_mlCoords)stop.coords=_mlCoords;
   }else{
@@ -9265,7 +9271,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260903103615';
+  const _BUILD_CURRENT='20260903115403';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
