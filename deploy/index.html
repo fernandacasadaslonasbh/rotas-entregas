@@ -4216,24 +4216,28 @@ function renderDriverView(){
       }
       if(stop.type==='pickup'||stop.type==='custom'){
         const isPickup=stop.type==='pickup';
-        const base=isPickup?(BASES[stop.key]||{}):null;
-        const addr=isPickup?(base?.addr||''):(stop.addr||'');
+        // custom+key = visita a base (ex: Matriz, Filial, CD adicionada manualmente)
+        const isBaseVisit=stop.type==='custom'&&!!stop.key&&!!BASES[stop.key];
+        const base=(isPickup||isBaseVisit)?(BASES[stop.key]||{}):null;
+        const addr=(isPickup||isBaseVisit)?(base?.addr||''):(stop.addr||'');
         // Prefer mapsLink (direct link) over address-based search
         const mapsLinkPickup=stop.mapsLink||(addr?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`:'');
         const legDist=p.legDists&&p.legDists[idx]?`${(p.legDists[idx]/1000).toFixed(1)} km`:'';
         const legDur=p.legDurs&&p.legDurs[idx]?`${Math.round(p.legDurs[idx]/60)} min`:'';
         // Products to collect at this stop
         const pickupItems=isPickup?getPickupStopDetails(p.stops,idx):[];
-        const lbl=isPickup?(pickupItems.length?`📦 Coleta — ${esc(base?.label||stop.key||'')}`:`🏢 ${esc(base?.label||stop.key||'')}`):`📌 ${esc(stop.label||stop.addr||'Parada')}`;
+        const lbl=isPickup?(pickupItems.length?`📦 Coleta — ${esc(base?.label||stop.key||'')}`:`🏢 ${esc(stop.key||'')}`)
+          :isBaseVisit?`🏢 ${esc(stop.key||'')}`
+          :`📌 ${esc(stop.label||stop.addr||'Parada')}`;
         const pickupProdsHtml=pickupItems.length?`<div style="margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:8px 10px">
           <div style="font-size:0.75rem;font-weight:700;color:#15803d;margin-bottom:4px">📋 Produtos a coletar:</div>
           ${pickupItems.map(item=>`<div style="font-size:0.8rem;margin-bottom:4px"><span style="color:#374151;font-weight:600">${esc(item.cliente)}</span><br>${item.produtos.map(pp=>`<span style="color:#6b7280">${pp.sku?'<strong>'+esc(pp.sku)+'</strong> — ':''}`+esc(pp.nome)+` × ${pp.qtd}${pp.origem?' ('+esc(pp.origem)+')':''}</span>`).join('<br>')}</div>`).join('')}
         </div>`:'';
         const justObs=!isPickup?(stop.just||''):'';
-        const addrLabel=isPickup?(base?.label||stop.key||''):'';
+        const addrLabel=(isPickup||isBaseVisit)?(base?.label||stop.key||''):'';
         // Action buttons for custom stops (not pickup)
         let _stopActionHtml='';
-        if(!isPickup){
+        if(!isPickup||isBaseVisit){
           if(status==='pendente'){
             _stopActionHtml=`<button class="drv-start-btn" style="background:#2563eb;margin-top:12px" onclick="setDriverStatus('${statusKey}','a_caminho')">🚩 Iniciar parada</button>`;
           } else if(status==='a_caminho'){
@@ -4254,7 +4258,7 @@ function renderDriverView(){
               <div class="drv-card-cliente">${lbl}</div>
               ${legDist||legDur?`<span class="drv-leg-info" style="margin-top:2px;display:inline-block">${[legDist,legDur].filter(Boolean).join(' · ')}</span>`:''}
             </div>
-            ${!isPickup&&status!=='pendente'?`<button class="drv-reset-btn" onclick="setDriverStatus('${statusKey}','pendente')">↩ Pendente</button>`:''}
+            ${(!isPickup||isBaseVisit)&&status!=='pendente'?`<button class="drv-reset-btn" onclick="setDriverStatus('${statusKey}','pendente')">↩ Pendente</button>`:''}
           </div>
           ${_addrBlock}
           ${justObs?`<div class="drv-obs" style="margin-top:6px">📝 ${esc(justObs)}</div>`:''}
@@ -9283,7 +9287,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260903121027';
+  const _BUILD_CURRENT='20260903121746';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
