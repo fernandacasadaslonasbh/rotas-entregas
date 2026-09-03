@@ -1101,9 +1101,10 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
         <label class="sopt"><input type="radio" name="st" value="Filial" onchange="togCustom()"><span>Filial – Pedro II (BH)</span></label>
         <label class="sopt"><input type="radio" name="st" value="custom" onchange="togCustom()"><span>Outro endereço</span></label>
       </div>
+      <div id="baseAddrPreview" style="display:none;margin:8px 0;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:0.85rem;color:#1e40af">📍 <span id="baseAddrText"></span></div>
       <div id="custBox" style="display:none">
         <div class="fg" style="margin-bottom:8px">
-          <label>Nome da parada <span style="color:#9ca3af;font-size:0.75rem">(ex: Filial Pedro II, Cliente X...)</span></label>
+          <label>Nome da parada <span style="color:#9ca3af;font-size:0.75rem">(ex: Cliente X, Ponto de retirada...)</span></label>
           <input type="text" id="custLabel" placeholder="Como chamar esta parada no card do motorista">
         </div>
         <div style="display:flex;gap:8px;align-items:flex-end">
@@ -3261,7 +3262,18 @@ function openStop(per,aft){
   document.getElementById('sOverlay').style.display='flex';
 }
 function closeStop(){document.getElementById('sOverlay').style.display='none';}
-function togCustom(){const v=document.querySelector('input[name=st]:checked')?.value;document.getElementById('custBox').style.display=v==='custom'?'':'none';}
+function togCustom(){
+  const v=document.querySelector('input[name=st]:checked')?.value;
+  document.getElementById('custBox').style.display=v==='custom'?'':'none';
+  const prev=document.getElementById('baseAddrPreview');
+  const prevTxt=document.getElementById('baseAddrText');
+  if(v&&v!=='custom'&&BASES[v]&&BASES[v].addr){
+    prevTxt.textContent=BASES[v].label+': '+BASES[v].addr;
+    prev.style.display='';
+  } else {
+    prev.style.display='none';
+  }
+}
 function maskCep(el){el.value=el.value.replace(/\D/g,'').replace(/^(\d{5})(\d)/,'$1-$2').substring(0,9);}
 async function fetchCep(){
   const raw=document.getElementById('custCep').value.replace(/\D/g,'');
@@ -4205,7 +4217,6 @@ function renderDriverView(){
       if(stop.type==='pickup'||stop.type==='custom'){
         const isPickup=stop.type==='pickup';
         const base=isPickup?(BASES[stop.key]||{}):null;
-        const lbl=isPickup?`📦 Coleta — ${esc(base?.label||stop.key||'')}`:`📌 ${esc(stop.label||stop.addr||'Parada')}`;
         const addr=isPickup?(base?.addr||''):(stop.addr||'');
         // Prefer mapsLink (direct link) over address-based search
         const mapsLinkPickup=stop.mapsLink||(addr?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`:'');
@@ -4213,6 +4224,7 @@ function renderDriverView(){
         const legDur=p.legDurs&&p.legDurs[idx]?`${Math.round(p.legDurs[idx]/60)} min`:'';
         // Products to collect at this stop
         const pickupItems=isPickup?getPickupStopDetails(p.stops,idx):[];
+        const lbl=isPickup?(pickupItems.length?`📦 Coleta — ${esc(base?.label||stop.key||'')}`:`🏢 ${esc(base?.label||stop.key||'')}`):`📌 ${esc(stop.label||stop.addr||'Parada')}`;
         const pickupProdsHtml=pickupItems.length?`<div style="margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:8px 10px">
           <div style="font-size:0.75rem;font-weight:700;color:#15803d;margin-bottom:4px">📋 Produtos a coletar:</div>
           ${pickupItems.map(item=>`<div style="font-size:0.8rem;margin-bottom:4px"><span style="color:#374151;font-weight:600">${esc(item.cliente)}</span><br>${item.produtos.map(pp=>`<span style="color:#6b7280">${pp.sku?'<strong>'+esc(pp.sku)+'</strong> — ':''}`+esc(pp.nome)+` × ${pp.qtd}${pp.origem?' ('+esc(pp.origem)+')':''}</span>`).join('<br>')}</div>`).join('')}
@@ -9271,7 +9283,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260903115403';
+  const _BUILD_CURRENT='20260903120628';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
