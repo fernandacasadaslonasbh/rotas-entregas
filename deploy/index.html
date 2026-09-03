@@ -4212,6 +4212,7 @@ function renderDriverView(){
           ${pickupItems.map(item=>`<div style="font-size:0.8rem;margin-bottom:4px"><span style="color:#374151;font-weight:600">${esc(item.cliente)}</span><br>${item.produtos.map(pp=>`<span style="color:#6b7280">${pp.sku?'<strong>'+esc(pp.sku)+'</strong> — ':''}`+esc(pp.nome)+` × ${pp.qtd}${pp.origem?' ('+esc(pp.origem)+')':''}</span>`).join('<br>')}</div>`).join('')}
         </div>`:'';
         const justObs=!isPickup?(stop.just||''):'';
+        const addrLabel=isPickup?(base?.label||stop.key||''):'';
         // Action buttons for custom stops (not pickup)
         let _stopActionHtml='';
         if(!isPickup){
@@ -4224,6 +4225,10 @@ function renderDriverView(){
             _stopActionHtml=`<div class="drv-recebido-badge" style="margin-top:8px">✅ Parada concluída</div>`;
           }
         }
+        // Address block: pickup shows "Filial: endereço", custom shows endereço + obs
+        const _addrBlock=addr
+          ?`<div style="margin:10px 0 4px;padding:8px 10px;background:#f1f5f9;border-radius:8px;font-size:0.91rem;color:#1e293b;line-height:1.5">${addrLabel?`<span style="font-weight:700">${esc(addrLabel)}:</span> `:''}${esc(addr)}${mapsLinkPickup?` <a href="${mapsLinkPickup}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;margin-left:4px">🗺 Maps</a>`:''}</div>`
+          :(mapsLinkPickup?`<a href="${mapsLinkPickup}" target="_blank" class="drv-maps-btn" style="margin-top:8px">📍 Abrir no Google Maps</a>`:'');
         html+=`<div class="drv-card drv-s-${status}">
           <div class="drv-card-topbar-wrap">
             <span class="drv-seq-badge">${seq++}</span>
@@ -4233,8 +4238,8 @@ function renderDriverView(){
             </div>
             ${!isPickup&&status!=='pendente'?`<button class="drv-reset-btn" onclick="setDriverStatus('${statusKey}','pendente')">↩ Pendente</button>`:''}
           </div>
-          ${addr?`<div class="drv-info-grid"><div class="drv-info-row"><span class="drv-info-label">Endereço</span><span>${esc(addr)}${mapsLinkPickup?` <a href="${mapsLinkPickup}" target="_blank" style="color:#3b82f6;font-size:0.78rem">🗺 Maps</a>`:''}</span></div></div>`:(mapsLinkPickup?`<a href="${mapsLinkPickup}" target="_blank" class="drv-maps-btn" style="margin-top:8px">📍 Abrir no Google Maps</a>`:'')}
-          ${justObs?`<div class="drv-obs">📝 ${esc(justObs)}</div>`:''}
+          ${_addrBlock}
+          ${justObs?`<div class="drv-obs" style="margin-top:6px">📝 ${esc(justObs)}</div>`:''}
           ${pickupProdsHtml}
           ${_stopActionHtml}
         </div>`;
@@ -9260,7 +9265,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260903082020';
+  const _BUILD_CURRENT='20260903083531';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
