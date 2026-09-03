@@ -2437,14 +2437,14 @@ async function recalcPer(perName){
     }
     return null;
   });
-  // Verificar entregas sem coordenadas (bases/custom sem coords usam null-fill controlado)
+  // Verificar entregas sem coordenadas — avisa mas continua com null-fill (não bloqueia cálculo)
   const _missingDeliveries=perData.stops.filter((s,i)=>!ptsRaw[i]&&s.type==='delivery');
   if(_missingDeliveries.length){
     const _names=_missingDeliveries.map(s=>{const d=ST.deliveries.find(x=>x.id===s.id);return d?.cliente||'(card sem nome)';});
-    toast('⚠ Sem localização: '+_names.join(', ')+' — adicione endereço ou link do Maps','err');
-    return; // Preserva legDurs existentes sem sobrescrever
+    toast('⚠ Sem localização exata: '+_names.join(', ')+' — verifique o endereço ou link do Maps','warn');
+    // Não retorna — continua com null-fill para calcular distâncias aproximadas dos demais trechos
   }
-  // Para stops não-entrega sem coords: null-fill com vizinho (bases/custom com endereço não geocodificado ainda)
+  // Para stops sem coords: null-fill com vizinho (bases/custom com endereço não geocodificado ainda)
   {let _v=null;for(let i=0;i<ptsRaw.length;i++){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
   {let _v=null;for(let i=ptsRaw.length-1;i>=0;i--){if(ptsRaw[i])_v=ptsRaw[i];else if(_v)ptsRaw[i]=_v;}}
   const pts=ptsRaw;
@@ -9265,7 +9265,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260903083700';
+  const _BUILD_CURRENT='20260903103615';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
