@@ -1882,7 +1882,14 @@ function selectDate(date){
 }
 
 // ── Content ────────────────────────────────────────────────────────────────
+function _activeTab(){
+  const tabs=['gestao','transf','motorista','admin'];
+  for(const t of tabs){const el=document.getElementById('tab-'+t);if(el&&el.classList.contains('active'))return t;}
+  return 'gestao';
+}
 function renderContent(){
+  // Sempre atualiza aba motorista se estiver ativa (sincronização em tempo real)
+  if(_activeTab()==='motorista'){renderDriverView();return;}
   const noSel=document.getElementById('noSel');
   const dayContent=document.getElementById('dayContent');
   if(!ST.selectedDate){noSel.style.display='';dayContent.style.display='none';return;}
@@ -2380,6 +2387,16 @@ function addRouteHistorico(acao,nome){
   if(!curPlan().routeHistorico)curPlan().routeHistorico=[];
   curPlan().routeHistorico.push({nome:nome||'Sistema',em:hoje+' '+now,acao});
 }
+// Envia legDurs/legDists ao Firebase sem alterar _routeStructureAt (para sincronizar distâncias)
+function _fbPushLegDurs(date,perName){
+  if(!_fbDb||!date||!ST.routePlans[date])return;
+  const per=ST.routePlans[date][perName];
+  if(!per)return;
+  _fbDb.ref('cdl_state/routePlans/'+date+'/'+perName+'/legDurs').set(per.legDurs||[]).catch(()=>{});
+  _fbDb.ref('cdl_state/routePlans/'+date+'/'+perName+'/legDists').set(per.legDists||[]).catch(()=>{});
+  _fbDb.ref('cdl_state/routePlans/'+date+'/'+perName+'/totalDist').set(per.totalDist||0).catch(()=>{});
+  _fbDb.ref('cdl_state/routePlans/'+date+'/'+perName+'/totalDur').set(per.totalDur||0).catch(()=>{});
+}
 async function recalcPer(perName){
   const plan=curPlan();
   if(!plan||!plan[perName])return;
@@ -2465,6 +2482,8 @@ async function recalcPer(perName){
   // Só atualiza se o cálculo retornou dados válidos — evita sobrescrever com zeros em caso de falha de rede
   if(legDurs.length>0||totalDist>0){
     plan[perName]={...perData,totalDist,totalDur,legDurs,legDists};
+    // Sincroniza legDurs com Firebase sem alterar _routeStructureAt
+    _fbPushLegDurs(ST.selectedDate||_drvDate,perName);
   } else {
     toast('⚠ Rota não calculada — verifique a conexão e tente recalcular','err');
   }
@@ -2627,6 +2646,8 @@ function reRenderPanels(){
   if(pm)pm.innerHTML=panelHTML('manha',plan.manha,'Manhã — '+_fmHHrr(mStart),mStart,manhaBanner2);
   if(pt)pt.innerHTML=panelHTML('tarde',plan.tarde,'Tarde',lunchStart+60,lunch,tardeBaseExtra);
   initDrag();
+  // Atualiza aba motorista em tempo real se estiver ativa
+  if(_activeTab()==='motorista')renderDriverView();
 }
 
 // ── Geocoding & Route ──────────────────────────────────────────────────────
@@ -5879,6 +5900,7 @@ function openTcFromDelivery(delivId){
   if(!d)return;
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||'';};
   sf('tcData',d.data||ST.selectedDate||'');
+  sf('tcTitulo','Coleta — '+(d.cliente||'entrega'));
   sf('tcAntesEntrega',d.cliente||'');
   // Pré-preencher obs com referência à entrega
   sf('tcObs','Para entrega: '+(d.cliente||'')+(d.bairro?' ('+d.bairro+')':''));
@@ -9287,7 +9309,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260903121746';
+  const _BUILD_CURRENT='20260904082728';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
