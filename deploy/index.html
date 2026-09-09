@@ -1200,6 +1200,19 @@ let FIREBASE_CONFIG={
   appId:"1:369644629225:web:120978c64bf8447469d478"
 };
 let _fbDb=null,_fbSaving=false,_pendingExternalState=null;
+// Merge driverStatus: prefere o status mais avançado por chave
+// Garante que atualizações do motorista sempre aparecem para usuários da gestão
+function _mergeDs(target,source){
+  if(!source)return;
+  const _ord={pendente:0,a_caminho:1,entregue:2,nao_entregue:2};
+  Object.keys(source).forEach(k=>{
+    const sv=source[k],lc=target[k];
+    if(!lc){target[k]=sv;return;}
+    const svS=typeof sv==='object'?sv.status:sv;
+    const lcS=typeof lc==='object'?lc.status:lc;
+    if((_ord[svS]||0)>=(_ord[lcS]||0))target[k]=sv;
+  });
+}
 function _applyState(s){
   // Preservar campos locais que nunca devem ser sobrescritos por estado desatualizado de outro usuário
   // 1) driverStatus — atualizado pelo motorista
@@ -1297,25 +1310,33 @@ function _applyState(s){
       const _lTs=_locP._routeStructureAt||'';
       const _sSv=_srvP._savedAt||'';
       const _lSv=_locP._savedAt||'';
-      // Servidor mais recente em estrutura → aplica servidor (mas preserva driverStatus local)
+      // Servidor mais recente em estrutura → aplica servidor
       if(_sTs>_lTs){
-        const _pDs=_locP.driverStatus; // preserva status do motorista — nunca vem do servidor de routePlan
+        const _pDs=_locP.driverStatus;
         ST.routePlans[date]=_srvP;
-        if(_pDs)ST.routePlans[date].driverStatus=_pDs;
+        // Merge driverStatus: preferir status mais avançado por chave (local pode ter atualização pendente)
+        if(!ST.routePlans[date].driverStatus)ST.routePlans[date].driverStatus={};
+        if(_pDs)_mergeDs(ST.routePlans[date].driverStatus,_pDs);
         // Limpa cache de recalc — nova estrutura recebida do servidor exige novo cálculo
         _legRecalcDone.delete(date+'-manha');_legRecalcDone.delete(date+'-tarde');
         _transfRecalcDone.delete(date+'-transf-manha');_transfRecalcDone.delete(date+'-transf-tarde');
-      // Local mais recente: mantém local — save() explícito já gravou no Firebase
+      // Local mais recente em estrutura: mantém local, mas ainda sincroniza driverStatus do servidor
       } else if(_lTs>_sTs){
-        // sem ação: versão local mais nova já está no Firebase via save() que chamou _markRouteModified
+        if(!ST.routePlans[date].driverStatus)ST.routePlans[date].driverStatus={};
+        _mergeDs(ST.routePlans[date].driverStatus,_srvP.driverStatus);
       // Mesma estrutura: desempata por _savedAt
       } else if(_sSv>_lSv){
         const _pDs=_locP.driverStatus;
         ST.routePlans[date]=_srvP;
-        if(_pDs)ST.routePlans[date].driverStatus=_pDs;
+        if(!ST.routePlans[date].driverStatus)ST.routePlans[date].driverStatus={};
+        if(_pDs)_mergeDs(ST.routePlans[date].driverStatus,_pDs);
         _legRecalcDone.delete(date+'-manha');_legRecalcDone.delete(date+'-tarde');
+      } else {
+        // Mesmos timestamps: sincroniza ao menos o driverStatus do servidor
+        // (motorista atualiza status sem alterar estrutura da rota)
+        if(!ST.routePlans[date].driverStatus)ST.routePlans[date].driverStatus={};
+        _mergeDs(ST.routePlans[date].driverStatus,_srvP.driverStatus);
       }
-      // else: timestamps iguais ou local mais recente em _savedAt — mantém local
     });
   }
   if(ST.routePlans){Object.values(ST.routePlans).forEach(p=>{if(!p.transfManha)p.transfManha=[];if(!p.transfTarde)p.transfTarde=[];if(!p.transfManhaCalc)p.transfManhaCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};if(!p.transfTardeCalc)p.transfTardeCalc={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};});}
@@ -1410,10 +1431,22 @@ function initFirebase(){
       }
       _pendingExternalState=null;
       _applyState(snap.val()); // Always update local state, even with modal open
+      renderSidebar(); // Sidebar sempre atualiza mesmo com modal aberto
       const modalOpen=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');
-      if(modalOpen)return; // Don't re-render while user has a modal open
-      renderSidebar();
+      if(modalOpen)return; // Não re-renderiza conteúdo principal com modal aberto
       renderContent();
+    });
+    // Re-sync quando aba volta do background (celular minimizado, computador bloqueado, etc.)
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible'&&_fbDb){
+        _fbDb.ref('cdl_state').once('value',snap=>{
+          if(!snap.exists())return;
+          _applyState(snap.val());
+          renderSidebar();
+          const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');
+          if(!_mo)renderContent();
+        }).catch(()=>{});
+      }
     });
     // Listener dedicado para driverStatus — nunca bloqueado por _fbSaving
     // Garante que atualizações do motorista aparecem em tempo real para todos
@@ -1688,7 +1721,7 @@ function save(){
     });
     _fbDb.ref('cdl_state').update(_upd).then(()=>{
       _routeDirtyDates.clear(); // Bug #4 fix: limpa dirty DEPOIS do sucesso
-      setTimeout(()=>{_fbSaving=false;if(_pendingExternalState){const _ps=_pendingExternalState;_pendingExternalState=null;_applyState(_ps);const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');if(!_mo){renderSidebar();renderContent();}}},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
+      setTimeout(()=>{_fbSaving=false;if(_pendingExternalState){const _ps=_pendingExternalState;_pendingExternalState=null;_applyState(_ps);renderSidebar();const _mo=!!document.querySelector('[id$="Modal"][style*="flex"],[id$="modal"][style*="flex"],.modal[style*="flex"]');if(!_mo){renderContent();}}},800);}).catch(e=>{_fbSaving=false;console.warn('Firebase save:',e);});
     // driverStatus NÃO é mais gravado aqui — apenas nas funções que o modificam explicitamente
     // (evita que save() de outra ação sobrescreva o status do motorista com timestamp mais novo)
   }
@@ -1749,6 +1782,13 @@ function coordsFromUrl(url){
   return null;
 }
 
+// Extrai endereço legível de URLs tipo google.com/maps/place/[endereço]/...
+function addrFromMapsUrl(url){
+  if(!url)return null;
+  const m=url.match(/\/maps\/place\/([^/?#]+)/);
+  if(!m)return null;
+  try{return decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/,\s*$/,'').trim()||null;}catch(e){return null;}
+}
 // ── Plan helpers ──────────────────────────────────────────────────────────────
 let _drvDate='';
 function curPlan(){const d=_drvDate||ST.selectedDate;return(ST.routePlans&&d)?ST.routePlans[d]:null;}
@@ -2419,7 +2459,10 @@ async function recalcPer(perName){
           _d.coords=_coLink;const _idxL=ST.deliveries.findIndex(x=>x.id===s.id);if(_idxL>=0)ST.deliveries[_idxL].coords=_coLink;
         } else if(!_d.coords){
           try{
-            let co=hasAddr(_d)?await geocode(bAddr(_d)):null;
+            // Tenta geocodificar: 1) endereço do card, 2) endereço extraído do link do Maps
+            const _addrFallback=_d.mapsLink?addrFromMapsUrl(_d.mapsLink):null;
+            const _addrToGeo=hasAddr(_d)?bAddr(_d):(_addrFallback||null);
+            let co=_addrToGeo?await geocode(_addrToGeo):null;
             if(co){_d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===s.id);if(idx>=0)ST.deliveries[idx].coords=co;}
           }catch(e){}
         }
@@ -9309,7 +9352,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260904082728';
+  const _BUILD_CURRENT='20260909145706';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
