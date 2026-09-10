@@ -6546,7 +6546,7 @@ function saveTcCard(){
   const _clienteAddr=_pontoDestino==='Cliente'?gf('tcClienteDestinoAddr'):'';
   const _clienteMaps=_pontoDestino==='Cliente'?gf('tcClienteDestinoMaps'):'';
   const _clienteCoords=_clienteMaps?coordsFromUrl(_clienteMaps):null;
-  const rec={id:tcEditId,titulo,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:_pontoDestino,clienteAddr:_clienteAddr,clienteMapsLink:_clienteMaps,clienteCoords:_clienteCoords||undefined,produtos:[..._tcProdutos]};
+  const rec={id:tcEditId,titulo,data:gf('tcData'),obs:gf('tcObs'),antesEntrega:gf('tcAntesEntrega'),tagImportante:tagImp,tipoTransf,pontoSaida:'',pontoDestino:_pontoDestino,clienteAddr:_clienteAddr,clienteMapsLink:_clienteMaps,..._clienteCoords&&{clienteCoords:_clienteCoords},produtos:[..._tcProdutos]};
   if(!ST.transfers)ST.transfers=[];
   // Controle de concorrência: bloqueia se outro usuário modificou o card enquanto estava aberto
   if(!tcNewCard&&tcEditId&&_tcOpenedAt){
@@ -6588,10 +6588,11 @@ function saveTcCard(){
 let _pendingTcRec=null,_pendingTcExistId=null,_pendingTcAutor='',_pendingTcNow='';
 function _doCreateTcCard(rec,autor,stamp){
   const _nowIsoTc=new Date().toISOString();ST.transfers.push({...rec,historico:[{nome:autor,em:stamp,tipo:'criação'}],createdAt:_nowIsoTc,updatedAt:_nowIsoTc,createdBy:autor});
-  if(_fbDb)_fbDb.ref('cdl_state/transfers/'+rec.id).set(ST.transfers[ST.transfers.length-1]).catch(()=>{});
+  if(_fbDb){try{_fbDb.ref('cdl_state/transfers/'+rec.id).set(ST.transfers[ST.transfers.length-1]).catch(e=>{console.warn('FB set transfer:',e);});}catch(e){console.warn('FB set transfer sync:',e);}}
   _logAudit('card','Criou coleta/transferência: '+(rec.titulo||''),rec.data);
   if(!ST.selectedDate&&rec.data)ST.selectedDate=rec.data;
-  save();closeTcForm();renderSidebar();
+  try{save();}catch(e){console.warn('save error:',e);}
+  closeTcForm();renderSidebar();
   if(ST.selectedDate===rec.data||ST.selectedDate===null)renderContent();
   toast('Card criado!','ok');
 }
@@ -9352,7 +9353,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260909145706';
+  const _BUILD_CURRENT='20260910112639';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
