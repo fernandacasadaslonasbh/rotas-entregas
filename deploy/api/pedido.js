@@ -9,22 +9,29 @@ const APP_SECRET_CD = '63b1bb40caba6f37c7814735bf637acd';
 const OMIE_URL      = 'https://app.omie.com.br/api/v1/produtos/pedido/';
 const OMIE_CLI_URL  = 'https://app.omie.com.br/api/v1/geral/clientes/';
 
-// Resolve CNPJ → nCodCliente via Omie
+// Resolve CNPJ → nCodCliente via Omie (usa ListarClientes com filtro)
 async function resolverCnpj(cnpj) {
   const r = await fetch(OMIE_CLI_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      call: 'ConsultarCliente',
+      call: 'ListarClientes',
       app_key: APP_KEY_CD,
       app_secret: APP_SECRET_CD,
-      param: [{ cnpj_cpf: cnpj }]
+      param: [{
+        pagina: 1,
+        registros_por_pagina: 1,
+        apenas_importado_api: 'N',
+        clientesFiltro: { cnpj_cpf: cnpj }
+      }]
     })
   });
   const data = await r.json();
   if (data.faultstring) throw new Error('Omie: ' + data.faultstring);
-  const cod = data.nCodCliente || data.codigo_cliente;
-  if (!cod) throw new Error('Cliente não encontrado para CNPJ ' + cnpj);
+  const clientes = data.clientes_cadastro || [];
+  if (!clientes.length) throw new Error('Cliente não encontrado para CNPJ ' + cnpj);
+  const cod = clientes[0].codigo_cliente_omie || clientes[0].nCodCliente;
+  if (!cod) throw new Error('Código do cliente não retornado pelo Omie');
   return Number(cod);
 }
 
