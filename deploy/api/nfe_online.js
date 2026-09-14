@@ -1,5 +1,5 @@
 // Vercel Serverless Function — proxy para Omie ListarNFe (loja Online)
-// Busca as NFs mais recentes e devolve junto com _campos_data para debug
+// VERSÃO DEBUG: retorna resposta bruta da Omie para identificar campos corretos
 
 export const maxDuration = 60;
 
@@ -32,20 +32,22 @@ export default async function handler(req, res) {
 
     if (data.faultstring) throw new Error(data.faultstring);
 
-    // Inclui debug: mostra os campos do 1º registro para identificar o campo de data
-    const lista = data.nfCadastro || data.nfListar || [];
-    const debug = lista.length > 0 ? {
-      _total: data.nfTotalRegistros || data.nTotalRegistros || lista.length,
-      _paginas: data.nfTotalPaginas || data.nTotalPaginas || 1,
-      _campo_cabecalho: Object.keys(lista[0].cabecalho || lista[0].cCabecalho || lista[0] || {}).slice(0, 30),
-      _amostra_datas: lista.slice(0, 5).map(nf => {
-        const cab = nf.cabecalho || nf.cCabecalho || nf;
-        return { dEmi: cab.dEmi, data_emissao: cab.data_emissao, dDtEmissao: cab.dDtEmissao, nNF: cab.nNF };
-      })
-    } : { _total: 0, _vazio: true };
+    // Retorna resposta bruta + metadados de debug:
+    // _campos_raiz = todos os campos no nível raiz da resposta
+    // _amostra = os primeiros campos do primeiro registro (qualquer chave de array)
+    const camposRaiz = Object.keys(data);
+    const primeiroArray = camposRaiz.find(k => Array.isArray(data[k]));
+    const amostraItem = primeiroArray && data[primeiroArray].length > 0
+      ? { _chaveArray: primeiroArray, _camposItem: Object.keys(data[primeiroArray][0]), _item0: data[primeiroArray][0] }
+      : { _chaveArray: null };
 
-    return res.status(200).json({ nfCadastro: lista, ...debug,
-      nfTotalPaginas: data.nfTotalPaginas || data.nTotalPaginas || 1 });
+    return res.status(200).json({
+      _debug: true,
+      _campos_raiz: camposRaiz,
+      _total_raiz: camposRaiz.map(k => ({ campo: k, tipo: Array.isArray(data[k]) ? `array(${data[k].length})` : typeof data[k], valor: Array.isArray(data[k]) ? data[k].length : data[k] })),
+      _amostra: amostraItem,
+      _raw: data   // resposta completa da Omie
+    });
   } catch(e) {
     return res.status(500).json({ erro: e.message });
   }
