@@ -8,7 +8,6 @@ export const maxDuration = 60;
 
 const KEY = '7167467499192';
 const SEC = '4e3e8e18fbefee789318d4e63108c9c1';
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function listarPedidos(dataBR, pagina) {
   const r = await fetch('https://app.omie.com.br/api/v1/produtos/pedido/', {
@@ -33,32 +32,21 @@ async function listarPedidos(dataBR, pagina) {
 }
 
 function extrairNF(ped, dataBR) {
-  const ic  = ped.infoCadastro         || {};
-  const tot = ped.total_pedido         || {};
-  const cab = ped.cabecalho            || {};
+  const ic  = ped.infoCadastro           || {};
+  const tot = ped.total_pedido           || {};
+  const cab = ped.cabecalho              || {};
   const inf = ped.informacoes_adicionais || {};
 
   // Número da NF — tenta vários nomes de campo do Omie
-  const nroNF = ic.cNumNF || ic.numero_nf || ic.cNF || '';
+  const nroNF = ic.cNumNF || ic.numero_nf || ic.cNF || ic.nNF || '';
   if (!nroNF) return null; // pedido ainda não faturado
 
-  // Chave de acesso da NF-e (44 dígitos)
-  const chave = ic.cChaveNFe || ic.chave_nfe || ic.chaveNFe || '-';
-
-  // Data de emissão / faturamento
-  const dtEmit = ic.dDtFatur || ic.data_emissao || cab.dDtPedido || dataBR;
-
-  // UF e cidade de entrega (endereço de destino do pedido)
+  const chave  = ic.cChaveNFe || ic.chave_nfe || ic.chaveNFe || '-';
+  const dtEmit = ic.dDtFatur  || ic.data_emissao || cab.dDtPedido || dataBR;
   const uf     = (inf.cUFEntrega    || inf.estado_entrega    || cab.cUf    || '-').toUpperCase();
   const cidade =  inf.cCidEntrega   || inf.municipio_entrega  || cab.cCidade || '-';
-
-  // DIFAL (ICMS destinatário) e FCP
-  const difal = parseFloat(
-    tot.nValICMSUFDest || tot.valor_icms_uf_dest || tot.icms_uf_destino || 0
-  ) || 0;
-  const fcp = parseFloat(
-    tot.nValFCPDest    || tot.valor_fcp_uf_dest  || tot.fcp_uf_destino  || 0
-  ) || 0;
+  const difal  = parseFloat(tot.nValICMSUFDest || tot.valor_icms_uf_dest || tot.icms_uf_destino || 0) || 0;
+  const fcp    = parseFloat(tot.nValFCPDest    || tot.valor_fcp_uf_dest  || tot.fcp_uf_destino  || 0) || 0;
 
   return { nroNF, chave, dtEmit, uf, cidade, difal, fcp };
 }
@@ -80,12 +68,41 @@ export default async function handler(req, res) {
     const raw = await listarPedidos(dataBR, pagina);
 
     const peds = raw.pedido_venda_produto || [];
-    const nfTotalPaginas    = raw.total_de_paginas    || 1;
-    const total_de_registros = raw.total_de_registros || 0;
+    const nfTotalPaginas     = raw.total_de_paginas    || 1;
+    const total_de_registros = raw.total_de_registros  || 0;
 
-    const nfs = peds
-      .map(p => extrairNF(p, dataBR))
-      .filter(Boolean);
+    const nfs = peds.map(p => extrairNF(p, dataBR)).filter(Boolean);
+
+    // DEBUG TEMPORÁRIO: quando não acha NFs, devolve a estrutura bruta
+    // do primeiro pedido para identificar os nomes corretos dos campos.
+    if (nfs.length === 0 && peds.length > 0) {
+      const p0 = peds[0];
+      return res.status(200).json({
+        nfs: [],
+        nfTotalPaginas,
+        total_de_registros,
+        _debug: {
+          total_pedidos_nesta_pagina: peds.length,
+          msg: 'Nenhum pedido com NF encontrado — veja infoCadastro e total_pedido do 1º pedido abaixo',
+          infoCadastro:    p0.infoCadastro           || {},
+          total_pedido:    p0.total_pedido           || {},
+          cabecalho_keys:  Object.keys(p0.cabecalho  || {}),
+          inf_adicionais:  p0.informacoes_adicionais || {}
+        }
+      });
+    }
+
+    // Quando não vem nenhum pedido sequer (data sem vendas)
+    if (nfs.length === 0 && peds.length === 0) {
+      return res.status(200).json({
+        nfs: [],
+        nfTotalPaginas,
+        total_de_registros,
+        _debug: {
+          msg: `Nenhum pedido retornado pela Omie para a data ${dataBR}. Total de registros: ${total_de_registros}`
+        }
+      });
+    }
 
     return res.status(200).json({ nfs, nfTotalPaginas, total_de_registros });
 
