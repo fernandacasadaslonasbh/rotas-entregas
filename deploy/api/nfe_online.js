@@ -27,11 +27,8 @@ export default async function handler(req, res) {
     param: [{
       pagina,
       registros_por_pagina: 50,
-      apenas_importado_api: 'N',
       filtrar_por_data_de:  data_de,
-      filtrar_por_data_ate: data_ate,
-      tpAmb: '1',
-      tpNF:  '1'
+      filtrar_por_data_ate: data_ate
     }]
   };
 
