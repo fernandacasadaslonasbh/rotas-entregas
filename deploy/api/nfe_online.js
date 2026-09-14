@@ -25,10 +25,10 @@ export default async function handler(req, res) {
     app_key: APP_KEY,
     app_secret: APP_SECRET,
     param: [{
-      pagina,
-      registros_por_pagina: 50,
-      filtrar_por_data_de:  data_de,
-      filtrar_por_data_ate: data_ate
+      nPagina:         pagina,
+      nRegPorPagina:   50,
+      dEmiInicial:     data_de,
+      dEmiFinal:       data_ate
     }]
   };
 
