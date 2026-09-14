@@ -1,8 +1,9 @@
-// Vercel Serverless Function — proxy para Omie ListarNFe (ERP principal CD)
-// Busca NFs emitidas no Omie ERP (não na loja online) e filtra por data no servidor
+// Vercel Serverless Function — proxy para Omie ListarNFe
+// VERSÃO DEBUG COMPLETO — retorna resposta bruta + tenta variações de parâmetros
 
 export const maxDuration = 60;
 
+// Credenciais Omie ERP principal (CD) — mesmas do estoque.js
 const APP_KEY    = '5490393509601';
 const APP_SECRET = '63b1bb40caba6f37c7814735bf637acd';
 const OMIE_URL   = 'https://app.omie.com.br/api/v1/produtos/nfe/';
@@ -15,47 +16,60 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const { pagina = 1, data_de = null, data_ate = null } = req.body || {};
-
   try {
-    // Parâmetros básicos — só paginação (sem filtro de data até sabermos os nomes corretos)
-    const param = { nPagina: pagina, nRegPorPagina: 50 };
-
-    const resp = await fetch(OMIE_URL, {
-      method:  'POST',
+    // Tentativa 1: sem filtros (como antes)
+    const r1 = await fetch(OMIE_URL, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
+      body: JSON.stringify({
         call: 'ListarNFe',
-        app_key:    APP_KEY,
-        app_secret: APP_SECRET,
-        param: [param]
+        app_key: APP_KEY, app_secret: APP_SECRET,
+        param: [{ nPagina: 1, nRegPorPagina: 50 }]
       })
     });
-    const data = await resp.json();
+    const d1 = await r1.json();
 
-    if (data.faultstring) throw new Error(data.faultstring);
-
-    // Campo correto descoberto pelo debug anterior: listagemNfe
-    const lista = data.listagemNfe || data.nfCadastro || data.nfListar || [];
-    const total = data.nTotRegistros || data.nfTotalRegistros || 0;
-    const totalPags = data.nTotPaginas || data.nfTotalPaginas || 1;
-
-    // Debug: mostra campos do 1º item para sabermos o formato de data
-    const debug = lista.length > 0 ? {
-      _campos_cabecalho: Object.keys(lista[0].cabecalho || lista[0].cCabecalho || lista[0] || {}).slice(0, 40),
-      _campos_dest:      Object.keys(lista[0].destinatario || lista[0].dest || lista[0].cDest || {}),
-      _campos_total:     Object.keys(lista[0].total || lista[0].totalNF || {}),
-      _amostra: lista.slice(0, 3).map(nf => {
-        const cab = nf.cabecalho || nf.cCabecalho || nf;
-        return { nNF: cab.nNF, dEmi: cab.dEmi, dDtEmissao: cab.dDtEmissao, data_emissao: cab.data_emissao };
+    // Tentativa 2: com cSituacao = "A" (autorizadas)
+    const r2 = await fetch(OMIE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call: 'ListarNFe',
+        app_key: APP_KEY, app_secret: APP_SECRET,
+        param: [{ nPagina: 1, nRegPorPagina: 50, cSituacao: 'A' }]
       })
-    } : { _vazio: true, _nota: 'Nenhuma NF retornada pela Omie' };
+    });
+    const d2 = await r2.json();
+
+    // Tentativa 3: com dEmissaoInicial / dEmissaoFinal
+    const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }); // DD/MM/YYYY
+    const r3 = await fetch(OMIE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call: 'ListarNFe',
+        app_key: APP_KEY, app_secret: APP_SECRET,
+        param: [{ nPagina: 1, nRegPorPagina: 50, dEmissaoInicial: '01/01/2025', dEmissaoFinal: hoje }]
+      })
+    });
+    const d3 = await r3.json();
+
+    const resumo = (label, d) => ({
+      label,
+      faultstring: d.faultstring || null,
+      erro: d.erro || null,
+      campos_raiz: Object.keys(d),
+      nTotRegistros: d.nTotRegistros ?? d.nRegistros ?? '?',
+      nTotPaginas:   d.nTotPaginas  ?? '?',
+      listagemNfe_len: Array.isArray(d.listagemNfe) ? d.listagemNfe.length : 'não é array',
+      raw_parcial: JSON.stringify(d).slice(0, 400)
+    });
 
     return res.status(200).json({
-      nfCadastro: lista,
-      nfTotalPaginas: totalPags,
-      nTotRegistros: total,
-      ...debug
+      _debug: true,
+      _t1_sem_filtro: resumo('Sem filtro', d1),
+      _t2_cSituacao_A: resumo('cSituacao=A', d2),
+      _t3_data_range: resumo('dEmissaoInicial..Final', d3)
     });
 
   } catch(e) {
