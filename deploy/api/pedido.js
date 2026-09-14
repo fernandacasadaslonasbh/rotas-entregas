@@ -1,9 +1,32 @@
 // Vercel Serverless Function — proxy para Omie IncluirPedido
 // Roda no servidor Vercel, sem precisar de servidor local
+// Aceita codigo_cliente (numérico) OU cnpj_cliente (string CNPJ limpo)
+
+export const maxDuration = 60;
 
 const APP_KEY_CD    = '5490393509601';
 const APP_SECRET_CD = '63b1bb40caba6f37c7814735bf637acd';
 const OMIE_URL      = 'https://app.omie.com.br/api/v1/produtos/pedido/';
+const OMIE_CLI_URL  = 'https://app.omie.com.br/api/v1/geral/clientes/';
+
+// Resolve CNPJ → nCodCliente via Omie
+async function resolverCnpj(cnpj) {
+  const r = await fetch(OMIE_CLI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      call: 'ConsultarCliente',
+      app_key: APP_KEY_CD,
+      app_secret: APP_SECRET_CD,
+      param: [{ cnpj_cpf: cnpj }]
+    })
+  });
+  const data = await r.json();
+  if (data.faultstring) throw new Error('Omie: ' + data.faultstring);
+  const cod = data.nCodCliente || data.codigo_cliente;
+  if (!cod) throw new Error('Cliente não encontrado para CNPJ ' + cnpj);
+  return Number(cod);
+}
 
 export default async function handler(req, res) {
   // CORS — permite chamadas do app hospedado no Vercel
@@ -14,13 +37,27 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const { codigo_cliente, data_previsao, itens } = req.body || {};
-  if (!codigo_cliente || !itens || !itens.length) {
-    return res.status(400).json({ erro: 'codigo_cliente e itens são obrigatórios' });
+  let { codigo_cliente, cnpj_cliente, data_previsao, itens, prefixo } = req.body || {};
+  if (!itens || !itens.length) {
+    return res.status(400).json({ erro: 'itens são obrigatórios' });
+  }
+
+  // Resolve cliente por CNPJ se codigo_cliente não fornecido
+  if (!codigo_cliente && cnpj_cliente) {
+    try {
+      const cnpjLimpo = String(cnpj_cliente).replace(/\D/g, '');
+      codigo_cliente = await resolverCnpj(cnpjLimpo);
+    } catch(e) {
+      return res.status(400).json({ erro: e.message });
+    }
+  }
+  if (!codigo_cliente) {
+    return res.status(400).json({ erro: 'codigo_cliente ou cnpj_cliente são obrigatórios' });
   }
 
   const ts = new Date().toISOString().replace(/\D/g,'').slice(0,14);
-  const integracaoId = ('ROTA' + ts).slice(0, 30);
+  const pref = (prefixo || 'ROTA').toUpperCase().slice(0, 4);
+  const integracaoId = (pref + ts).slice(0, 30);
 
   const det = itens.map((item, i) => ({
     ide: { codigo_item_integracao: (integracaoId + '-' + (i+1)).slice(0, 30) },
