@@ -1,10 +1,10 @@
-// Vercel Serverless Function — proxy para Omie ListarNFe (loja Online)
-// VERSÃO DEBUG: retorna resposta bruta da Omie para identificar campos corretos
+// Vercel Serverless Function — proxy para Omie ListarNFe (ERP principal CD)
+// Busca NFs emitidas no Omie ERP (não na loja online) e filtra por data no servidor
 
 export const maxDuration = 60;
 
-const APP_KEY    = '7167467499192';
-const APP_SECRET = '4e3e8e18fbefee789318d4e63108c9c1';
+const APP_KEY    = '5490393509601';
+const APP_SECRET = '63b1bb40caba6f37c7814735bf637acd';
 const OMIE_URL   = 'https://app.omie.com.br/api/v1/produtos/nfe/';
 
 export default async function handler(req, res) {
@@ -15,9 +15,12 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const { pagina = 1 } = req.body || {};
+  const { pagina = 1, data_de = null, data_ate = null } = req.body || {};
 
   try {
+    // Parâmetros básicos — só paginação (sem filtro de data até sabermos os nomes corretos)
+    const param = { nPagina: pagina, nRegPorPagina: 50 };
+
     const resp = await fetch(OMIE_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,29 +28,36 @@ export default async function handler(req, res) {
         call: 'ListarNFe',
         app_key:    APP_KEY,
         app_secret: APP_SECRET,
-        param: [{ nPagina: pagina, nRegPorPagina: 50 }]
+        param: [param]
       })
     });
     const data = await resp.json();
 
     if (data.faultstring) throw new Error(data.faultstring);
 
-    // Retorna resposta bruta + metadados de debug:
-    // _campos_raiz = todos os campos no nível raiz da resposta
-    // _amostra = os primeiros campos do primeiro registro (qualquer chave de array)
-    const camposRaiz = Object.keys(data);
-    const primeiroArray = camposRaiz.find(k => Array.isArray(data[k]));
-    const amostraItem = primeiroArray && data[primeiroArray].length > 0
-      ? { _chaveArray: primeiroArray, _camposItem: Object.keys(data[primeiroArray][0]), _item0: data[primeiroArray][0] }
-      : { _chaveArray: null };
+    // Campo correto descoberto pelo debug anterior: listagemNfe
+    const lista = data.listagemNfe || data.nfCadastro || data.nfListar || [];
+    const total = data.nTotRegistros || data.nfTotalRegistros || 0;
+    const totalPags = data.nTotPaginas || data.nfTotalPaginas || 1;
+
+    // Debug: mostra campos do 1º item para sabermos o formato de data
+    const debug = lista.length > 0 ? {
+      _campos_cabecalho: Object.keys(lista[0].cabecalho || lista[0].cCabecalho || lista[0] || {}).slice(0, 40),
+      _campos_dest:      Object.keys(lista[0].destinatario || lista[0].dest || lista[0].cDest || {}),
+      _campos_total:     Object.keys(lista[0].total || lista[0].totalNF || {}),
+      _amostra: lista.slice(0, 3).map(nf => {
+        const cab = nf.cabecalho || nf.cCabecalho || nf;
+        return { nNF: cab.nNF, dEmi: cab.dEmi, dDtEmissao: cab.dDtEmissao, data_emissao: cab.data_emissao };
+      })
+    } : { _vazio: true, _nota: 'Nenhuma NF retornada pela Omie' };
 
     return res.status(200).json({
-      _debug: true,
-      _campos_raiz: camposRaiz,
-      _total_raiz: camposRaiz.map(k => ({ campo: k, tipo: Array.isArray(data[k]) ? `array(${data[k].length})` : typeof data[k], valor: Array.isArray(data[k]) ? data[k].length : data[k] })),
-      _amostra: amostraItem,
-      _raw: data   // resposta completa da Omie
+      nfCadastro: lista,
+      nfTotalPaginas: totalPags,
+      nTotRegistros: total,
+      ...debug
     });
+
   } catch(e) {
     return res.status(500).json({ erro: e.message });
   }
