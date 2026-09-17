@@ -1487,9 +1487,10 @@ function initFirebase(){
       _renderHistoryIfOpen();
     });
     // Load config (drivers, vehicles, catalog, locaisColeta)
-    _fbDb.ref('cdl_config').once('value').then(snap=>{
+    _fbDb.ref('cdl_config').on('value',snap=>{
+      // Carrega ou atualiza config de todos os dispositivos em tempo real
       if(!snap.exists()){
-        // First time: migrate existing localStorage config to Firebase
+        // Primeiro acesso: migra localStorage local para Firebase
         const localDrivers=JSON.parse(localStorage.getItem('cdl_drivers')||'[]');
         const localVehicles=JSON.parse(localStorage.getItem('cdl_vehicles')||'[]');
         const localLocais=JSON.parse(localStorage.getItem('cdl_locais_coleta')||'{}');
@@ -1515,7 +1516,15 @@ function initFirebase(){
       if(cfg.catalogo_produto_ids)localStorage.setItem('cdl_produto_ids',JSON.stringify(cfg.catalogo_produto_ids));
       if(cfg.catalogo_unidade)localStorage.setItem('cdl_unidade',JSON.stringify(cfg.catalogo_unidade));
       if(cfg.mdfeWpp)localStorage.setItem('cdl_mdfe_whatsapp',cfg.mdfeWpp);
-    }).catch(e=>console.warn('Firebase config load:',e));
+      // Atualiza bases customizadas em memória após carregar locaisColeta
+      initCustomBases();
+      // Auto-heal: se Firebase está sem catálogo mas localStorage tem, reenvia
+      const _localCat=getCatalogo();
+      const _hasCat=Object.keys(_localCat).length>0;
+      if(!cfg.catalogo&&_hasCat)_fbDb.ref('cdl_config/catalogo').set(_localCat).catch(()=>{});
+      const _localLoc=JSON.parse(localStorage.getItem('cdl_locais_coleta')||'{}');
+      if(!cfg.locaisColeta&&Object.keys(_localLoc).length)_fbDb.ref('cdl_config/locaisColeta').set(_localLoc).catch(()=>{});
+    });
     // Escutar sincronizações em tempo real — quando alguém rodar o sync, todos os dispositivos atualizam o catálogo
     let _syncListenerReady=false;
     _fbDb.ref('cdl_config/ultima_sincronizacao').on('value',(snap)=>{
@@ -9353,7 +9362,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260914203809';
+  const _BUILD_CURRENT='20260917112341';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
