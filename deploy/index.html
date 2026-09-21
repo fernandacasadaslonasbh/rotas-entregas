@@ -3920,12 +3920,27 @@ function confirmUnrouted(){
   if(!_uSug.length)return;
   const plan=curPlan();
   _uSug.forEach(sg=>{
+    // Garante que o período existe com start+return antes de inserir
+    if(!plan[sg.per]||!plan[sg.per].stops){
+      const baseKey=sg.per==='tarde'?(plan.tardeBase||'CD'):'CD';
+      plan[sg.per]={stops:[{type:'start',key:baseKey},{type:'return',key:'CD'}],legDurs:[],legDists:[]};
+    }
     const stops=plan[sg.per].stops;
+    // Garante start stop
+    if(!stops.some(s=>s.type==='start')){
+      const baseKey=sg.per==='tarde'?(plan.tardeBase||'CD'):'CD';
+      stops.unshift({type:'start',key:baseKey});
+    }
+    // Garante return stop
+    if(!stops.some(s=>s.type==='return'))stops.push({type:'return',key:'CD'});
     // skip if already in route (guard against duplicates)
     if(stops.some(s=>s.type==='delivery'&&String(s.id)===String(sg.d.id)))return;
-    stops.splice(sg.insAt,0,{type:'delivery',id:sg.d.id});
+    // Recalcula insAt dentro dos stops reais (pode ter mudado com a normalização)
+    const retIdx=stops.findLastIndex(s=>s.type==='return');
+    const safeInsAt=retIdx>=0?Math.min(sg.insAt,retIdx):stops.length;
+    stops.splice(safeInsAt,0,{type:'delivery',id:sg.d.id});
     // re-index subsequent insertions in same period
-    _uSug.forEach(s2=>{if(s2.per===sg.per&&s2.insAt>=sg.insAt)s2.insAt++;});
+    _uSug.forEach(s2=>{if(s2.per===sg.per&&s2.insAt>=safeInsAt)s2.insAt++;});
   });
   plan.routeState='manual';
   plan.alteredBy='Sistema';
@@ -9383,7 +9398,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260921142221';
+  const _BUILD_CURRENT='20260921142526';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
