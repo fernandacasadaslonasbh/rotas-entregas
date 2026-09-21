@@ -3840,10 +3840,17 @@ function addDelivToRoute(delivId,per){
   // Remove from other period if present
   const otherPer=per==='manha'?'tarde':'manha';
   if(plan[otherPer]&&plan[otherPer].stops)plan[otherPer].stops=plan[otherPer].stops.filter(s=>!(s.type==='delivery'&&String(s.id)===String(delivId)));
+  // Garante start stop antes de inserir (caso rota do período esteja vazia)
+  if(!stops.some(s=>s.type==='start')){
+    const baseKey=per==='tarde'?(plan.tardeBase||'CD'):'CD';
+    stops.unshift({type:'start',key:baseKey});
+  }
   // Insert before return stop
   const retIdx=stops.findLastIndex(s=>s.type==='return');
   if(retIdx>=0)stops.splice(retIdx,0,{type:'delivery',id:delivId});
   else stops.push({type:'delivery',id:delivId});
+  // Garante return stop no final
+  if(!stops.some(s=>s.type==='return'))stops.push({type:'return',key:'CD'});
   _markRouteModified();save();renderContent();toast('Entrega adicionada à rota de '+per,'ok');
   showL('Recalculando distâncias...');recalcPer(per).then(()=>{save();reRenderPanels();hideL();}).catch(()=>hideL());
 }
@@ -9376,7 +9383,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260921082646';
+  const _BUILD_CURRENT='20260921142221';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
