@@ -3402,8 +3402,15 @@ function remStop(per,idx){
 // ── File attachments ───────────────────────────────────────────────────────
 function nfKey(id){return'cdl_nf_'+id;}
 function blKey(id){return'cdl_bl_'+id;}
+// Cache em memória para arquivos — garante que a UI funciona mesmo se localStorage falhar
+const _filesMemCache={};
+function _filesMemKey(type){return (editId||'')+'__'+type;}
 // ── Arquivos múltiplos (NF e Boleto) — localStorage como cache + Firebase como fonte de verdade ──
 function _getFiles(type){
+  // 1) Cache em memória (sessão atual — nunca falha)
+  const mk=_filesMemKey(type);
+  if(_filesMemCache[mk])return _filesMemCache[mk];
+  // 2) Fallback: localStorage
   const key=type==='nf'?nfKey(editId):blKey(editId);
   const raw=localStorage.getItem(key);
   if(!raw)return[];
@@ -3415,7 +3422,9 @@ function _getFiles(type){
 }
 function _setFiles(type,arr){
   const key=type==='nf'?nfKey(editId):blKey(editId);
-  // Salva no localStorage (cache local)
+  // 1) Salva em memória (sempre funciona, válido durante a sessão)
+  _filesMemCache[_filesMemKey(type)]=arr;
+  // 2) Salva no localStorage (cache local)
   try{localStorage.setItem(key,JSON.stringify(arr));}catch(e){console.warn('localStorage cheio:',e);}
   // Salva no Firebase dentro de cdl_state/files/ (mesmas regras do cdl_state)
   if(_fbDb&&editId){
@@ -3445,6 +3454,10 @@ function handleFile(type,input){
     if(idx>=0){ST.deliveries[idx][type==='nf'?'hasNf':'hasBoleto']=true;save();}
     input.value='';
     toast('Arquivo adicionado!','ok');
+  };
+  reader.onerror=()=>{
+    input.value='';
+    toast('Erro ao ler o arquivo. Tente novamente ou use outro navegador.','err');
   };
   reader.readAsDataURL(file);
 }
@@ -3487,8 +3500,9 @@ function loadFileUI(){
         if(!snap.exists())return;
         const fbFiles=snap.val();
         if(!Array.isArray(fbFiles)||!fbFiles.length)return;
-        // Atualiza cache local e UI
+        // Atualiza cache (memória + localStorage) e UI
         const key=type==='nf'?nfKey(editId):blKey(editId);
+        _filesMemCache[editId+'__'+type]=fbFiles;
         try{localStorage.setItem(key,JSON.stringify(fbFiles));}catch(e){}
         updateFileUI(type);
         if(type==='nf'&&fbFiles.length){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
@@ -9362,7 +9376,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260917112341';
+  const _BUILD_CURRENT='20260921082646';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
