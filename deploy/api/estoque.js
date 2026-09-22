@@ -31,7 +31,9 @@ async function getSaldo(sku) {
     const fisico = lista.reduce((sum, e) => sum + (parseFloat(e.fisico ?? e.nSaldo ?? 0) || 0), 0);
     // nCMC vem no primeiro item (custo médio de compra)
     const cmc = parseFloat(lista[0]?.nCMC) || null;
-    return { fisico, cmc };
+    // nIdProduto — código interno Omie, necessário para gerar NF de transferência
+    const idOmie = lista[0]?.nIdProduto || null;
+    return { fisico, cmc, idOmie };
   } catch (e) {
     console.error(`[estoque] ${sku}: ${e.message}`);
     return null;
