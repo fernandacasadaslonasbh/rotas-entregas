@@ -3451,7 +3451,13 @@ function handleFile(type,input){
     updateFileUI(type);
     if(type==='nf'){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
     const idx=ST.deliveries.findIndex(x=>x.id===editId);
-    if(idx>=0){ST.deliveries[idx][type==='nf'?'hasNf':'hasBoleto']=true;save();}
+    if(idx>=0){
+      const _hfd=ST.deliveries[idx];
+      _hfd[type==='nf'?'hasNf':'hasBoleto']=true;
+      _hfd.updatedAt=new Date().toISOString(); // atualiza timestamp para vencer merge no _applyState
+      if(_fbDb)_fbDb.ref('cdl_state/deliveries/'+editId).set(_hfd).catch(()=>{});
+      save();
+    }
     input.value='';
     toast('Arquivo adicionado!','ok');
   };
@@ -3475,7 +3481,13 @@ function removeFile(type,idx){
   updateFileUI(type);
   if(type==='nf'&&files.length===0){const b=document.getElementById('fNfNumBox');if(b)b.style.display='none';const n=document.getElementById('fNfNum');if(n)n.value='';}
   const delivIdx=ST.deliveries.findIndex(x=>x.id===editId);
-  if(delivIdx>=0){ST.deliveries[delivIdx][type==='nf'?'hasNf':'hasBoleto']=files.length>0;save();}
+  if(delivIdx>=0){
+    const _rfd=ST.deliveries[delivIdx];
+    _rfd[type==='nf'?'hasNf':'hasBoleto']=files.length>0;
+    _rfd.updatedAt=new Date().toISOString();
+    if(_fbDb)_fbDb.ref('cdl_state/deliveries/'+editId).set(_rfd).catch(()=>{});
+    save();
+  }
   toast('Arquivo removido','ok');
 }
 function updateFileUI(type){
@@ -3490,19 +3502,21 @@ function updateFileUI(type){
   </div>`).join('');
 }
 function loadFileUI(){
+  const _lfEid=editId; // captura editId agora — callback async pode rodar após troca de card
   // Primeiro mostra o que tem no localStorage (instantâneo)
   ['nf','boleto'].forEach(type=>updateFileUI(type));
   ['fNf','fBoleto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   // Busca do Firebase cdl_state/files/ para sincronizar com outros dispositivos
-  if(_fbDb&&editId){
+  if(_fbDb&&_lfEid){
     ['nf','boleto'].forEach(type=>{
-      _fbDb.ref('cdl_state/files/'+editId+'/'+type).once('value').then(snap=>{
+      _fbDb.ref('cdl_state/files/'+_lfEid+'/'+type).once('value').then(snap=>{
+        if(editId!==_lfEid)return; // card foi trocado enquanto buscava — ignora
         if(!snap.exists())return;
         const fbFiles=snap.val();
         if(!Array.isArray(fbFiles)||!fbFiles.length)return;
         // Atualiza cache (memória + localStorage) e UI
-        const key=type==='nf'?nfKey(editId):blKey(editId);
-        _filesMemCache[editId+'__'+type]=fbFiles;
+        const key=type==='nf'?nfKey(_lfEid):blKey(_lfEid);
+        _filesMemCache[_lfEid+'__'+type]=fbFiles;
         try{localStorage.setItem(key,JSON.stringify(fbFiles));}catch(e){}
         updateFileUI(type);
         if(type==='nf'&&fbFiles.length){const b=document.getElementById('fNfNumBox');if(b)b.style.display='';}
@@ -9398,7 +9412,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260921142526';
+  const _BUILD_CURRENT='20260922093320';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
