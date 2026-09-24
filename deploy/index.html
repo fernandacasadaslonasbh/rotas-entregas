@@ -2068,13 +2068,16 @@ function tcSection(){
           return`<div style="display:inline-flex;align-items:center;gap:5px;background:${_t[3]};border:1px solid ${_t[4]};border-radius:6px;padding:3px 9px;margin:4px 0;font-size:0.76rem;font-weight:600;color:${_t[2]}">${_t[0]} ${_t[1]}</div>`;
         })()}
         <div style="margin-top:4px;font-size:0.76rem;color:#6b7280">${prodCount} produto${prodCount!==1?'s':''}</div>
+        ${t.hasAnexo?`<div style="margin-top:4px"><span onclick="event.stopPropagation();openEditTcCard('${t.id}')" class="att-badge" style="cursor:pointer;font-size:0.7rem;padding:2px 7px;border-radius:8px;background:#dbeafe;color:#1d4ed8;font-weight:600;border:1px solid #bfdbfe">📎 Anexo</span></div>`:''}
         <div style="margin-top:8px;border-top:1px solid #f1f5f9;padding-top:8px">
           ${(()=>{
             if(t.tipoTransf==='lalamove'){
-              return`<div style="width:100%;padding:6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;font-size:0.76rem;font-weight:600;color:#c2410c;text-align:center">📦 Lalamove — não inclui na rota</div>`;
+              if(_tcColetado)return`<button onclick="event.stopPropagation();marcarTcColetado('${t.id}',false)" style="width:100%;padding:6px;background:#16a34a;border:1px solid #15803d;border-radius:7px;font-size:0.76rem;font-weight:600;color:#fff;cursor:pointer;text-align:center">✅ Coletado ▾</button>`;
+              return`<div style="display:flex;flex-direction:column;gap:5px"><div style="padding:5px 6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;font-size:0.76rem;font-weight:600;color:#c2410c;text-align:center">📦 Lalamove — não inclui na rota</div><button onclick="event.stopPropagation();marcarTcColetado('${t.id}',true)" style="width:100%;padding:6px;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;font-size:0.76rem;font-weight:600;color:#92400e;cursor:pointer">📌 Marcar como coletado</button></div>`;
             }
             if(t.tipoTransf==='interna'){
-              return`<div style="width:100%;padding:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;font-size:0.76rem;font-weight:600;color:#1d4ed8;text-align:center">🔄 Ted interna — não inclui na rota</div>`;
+              if(_tcColetado)return`<button onclick="event.stopPropagation();marcarTcColetado('${t.id}',false)" style="width:100%;padding:6px;background:#16a34a;border:1px solid #15803d;border-radius:7px;font-size:0.76rem;font-weight:600;color:#fff;cursor:pointer;text-align:center">✅ Coletado ▾</button>`;
+              return`<div style="display:flex;flex-direction:column;gap:5px"><div style="padding:5px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;font-size:0.76rem;font-weight:600;color:#1d4ed8;text-align:center">🔄 Ted interna — não inclui na rota</div><button onclick="event.stopPropagation();marcarTcColetado('${t.id}',true)" style="width:100%;padding:6px;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;font-size:0.76rem;font-weight:600;color:#92400e;cursor:pointer">📌 Marcar como coletado</button></div>`;
             }
             const _tcR=isTcInRoute(t.id);
             if(_tcR){
@@ -6068,6 +6071,14 @@ function _getTcAnexos(){
 function _setTcAnexos(arr){
   if(!tcEditId)return;
   try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){console.warn(e);}
+  // Atualiza flag hasAnexo na transfer e sincroniza Firebase
+  const _taIdx=(ST.transfers||[]).findIndex(x=>x.id===tcEditId);
+  if(_taIdx>=0){
+    ST.transfers[_taIdx].hasAnexo=arr.length>0;
+    ST.transfers[_taIdx].updatedAt=new Date().toISOString();
+    if(_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId).set(ST.transfers[_taIdx]).catch(()=>{});
+    save();
+  }
   if(_fbDb&&tcEditId){
     const ref=_fbDb.ref('cdl_state/files/'+tcEditId+'/anexos');
     if(arr.length)ref.set(arr).catch(e=>console.warn('TC anexo save:',e));
@@ -6791,6 +6802,18 @@ function setTransfStartBase(per, base){
   if(!plan[calcKey])plan[calcKey]={startBase:'CD',legDurs:[],legDists:[],totalDist:0,totalDur:0};
   plan[calcKey].startBase=base;
   recalcTransfPer(per).then(()=>renderTransfPanels());
+}
+function marcarTcColetado(tcId,coletado){
+  const idx=(ST.transfers||[]).findIndex(x=>x.id===tcId);
+  if(idx<0)return;
+  const t=ST.transfers[idx];
+  t.coletado=coletado;
+  t.coletadoEm=coletado?new Date().toISOString():null;
+  t.updatedAt=new Date().toISOString();
+  if(_fbDb)_fbDb.ref('cdl_state/transfers/'+tcId).set(t).catch(()=>{});
+  save();
+  renderContent();
+  toast(coletado?'✅ Marcado como coletado!':'Revertido para pendente','ok');
 }
 function renderTransfBtns(){
   const el=document.getElementById('transfBtns');if(!el)return;
@@ -9412,7 +9435,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260922162722';
+  const _BUILD_CURRENT='20260924121855';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
