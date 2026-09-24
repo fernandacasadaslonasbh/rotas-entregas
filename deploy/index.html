@@ -2046,9 +2046,12 @@ function tcSection(){
       const prodCount=prods.reduce((s,p)=>s+(p.qtd||1),0);
       const borderColor=t.tagImportante?'#dc2626':'#7c3aed';
       const _tcSt=_getTcDrvStatus(t.id);
-      const _tcDrvCls=_tcSt&&_tcSt!=='pendente'?' drv-s-'+_tcSt:'';
+      const _tcColetado=(t.tipoTransf==='lalamove'||t.tipoTransf==='interna')&&!!t.coletado;
+      const _tcDrvCls=_tcSt&&_tcSt!=='pendente'?' drv-s-'+_tcSt:(_tcColetado?' drv-s-entregue':'');
+      const _tcBorderC=_tcColetado?'#16a34a':borderColor;
+      const _tcBgS=_tcColetado?';background:#f0fdf4':(t.tagImportante?';background:#fff5f5':'');
       s+=`<div id="tc-card-${t.id}" class="card tc-merge-card${_tcDrvCls}"
-        style="border-left:4px solid ${borderColor};cursor:pointer${t.tagImportante?';background:#fff5f5':''}" onclick="openEditTcCard('${t.id}')">
+        style="border-left:4px solid ${_tcBorderC};cursor:pointer${_tcBgS}" onclick="openEditTcCard('${t.id}')">
         ${t.tagImportante?`<div style="display:flex;align-items:center;gap:6px;background:#fef2f2;border-bottom:1px solid #fecaca;margin:-12px -12px 10px -12px;padding:6px 12px;border-radius:8px 8px 0 0">
           <span style="font-size:0.85rem">⚑</span>
           <span style="font-size:0.75rem;font-weight:700;color:#dc2626;letter-spacing:0.03em">IMPORTANTE</span>
@@ -9435,7 +9438,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260924121855';
+  const _BUILD_CURRENT='20260924122241';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
