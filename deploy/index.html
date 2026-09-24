@@ -6074,13 +6074,13 @@ function _getTcAnexos(){
 function _setTcAnexos(arr){
   if(!tcEditId)return;
   try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){console.warn(e);}
-  // Atualiza flag hasAnexo na transfer e sincroniza Firebase
+  // Atualiza SOMENTE flag hasAnexo — sem bumpar updatedAt (evita falso conflito de concorrência)
   const _taIdx=(ST.transfers||[]).findIndex(x=>x.id===tcEditId);
   if(_taIdx>=0){
     ST.transfers[_taIdx].hasAnexo=arr.length>0;
-    ST.transfers[_taIdx].updatedAt=new Date().toISOString();
-    if(_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId).set(ST.transfers[_taIdx]).catch(()=>{});
-    save();
+    // Não atualiza updatedAt aqui: bumpar o timestamp enquanto o card está aberto
+    // faria _applyState sobrescrever _tcOpenedAt e disparar conflito falso
+    if(_fbDb)_fbDb.ref('cdl_state/transfers/'+tcEditId+'/hasAnexo').set(arr.length>0).catch(()=>{});
   }
   if(_fbDb&&tcEditId){
     const ref=_fbDb.ref('cdl_state/files/'+tcEditId+'/anexos');
@@ -9438,7 +9438,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260924122241';
+  const _BUILD_CURRENT='20260924123056';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
