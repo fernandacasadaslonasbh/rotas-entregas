@@ -32,7 +32,8 @@ async function getSaldo(sku) {
     // nCMC vem no primeiro item (custo médio de compra)
     const cmc = parseFloat(lista[0]?.nCMC) || null;
     // nIdProduto — código interno Omie, necessário para gerar NF de transferência
-    const idOmie = lista[0]?.nIdProduto || null;
+    // Atenção: nIdProduto vem na RAIZ da resposta, não dentro de listaEstoque
+    const idOmie = data.nIdProduto || null;
     return { fisico, cmc, idOmie };
   } catch (e) {
     console.error(`[estoque] ${sku}: ${e.message}`);
