@@ -66,6 +66,10 @@ export default async function handler(req, res) {
   const pref = (prefixo || 'ROTA').toUpperCase().slice(0, 4);
   const integracaoId = (pref + ts).slice(0, 30);
 
+  // ECMT = transferência CD → Online (e-commerce) → cenário fiscal Ecommerce RET
+  // demais prefixos (ROTA, ECMF etc.) → cenário Lojas Físicas RET
+  const COD_CENARIO = pref === 'ECMT' ? '11596910688' : '11596919404';
+
   const det = itens.map((item, i) => ({
     ide: { codigo_item_integracao: (integracaoId + '-' + (i+1)).slice(0, 30) },
     produto: {
@@ -78,7 +82,7 @@ export default async function handler(req, res) {
     inf_adic: {
       codigo_local_estoque:         11264312395,
       codigo_categoria_item:        '1.01.03',
-      codigo_cenario_impostos_item: '11596919404'
+      codigo_cenario_impostos_item: COD_CENARIO
     }
   }));
 
@@ -93,7 +97,7 @@ export default async function handler(req, res) {
         data_previsao:            data_previsao,
         etapa:                    '10',
         codigo_parcela:           '000',
-        codigo_cenario_impostos:  '11596919404'
+        codigo_cenario_impostos:  COD_CENARIO
       },
       frete: { modalidade: '9' },
       informacoes_adicionais: {
