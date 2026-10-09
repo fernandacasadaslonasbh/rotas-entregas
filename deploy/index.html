@@ -1084,6 +1084,7 @@ body{font-family:'Segoe UI',sans-serif;color:#333;height:100vh;display:flex;flex
 
     <div class="mfooter">
       <button class="btn btn-danger btn-sm" id="btnDel" onclick="delCard()" style="display:none;margin-right:auto">Excluir</button>
+      <button id="btnDuplicar" onclick="duplicateCard()" style="display:none;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:5px 12px;font-size:0.8rem;font-weight:600;cursor:pointer">📋 Duplicar</button>
       <button class="btn btn-outline btn-sm" onclick="closeCard()">Cancelar</button>
       <button class="btn btn-primary btn-sm" onclick="saveCard()">Salvar</button>
     </div>
@@ -3537,7 +3538,7 @@ function gf(id){return document.getElementById(id)?.value?.trim()||'';}
 function openNew(){
   editId=uid();newCard=true;_cardOpenedAt='';
   _setPresenceEditando('card_entrega',editId,'Nova entrega');
-  document.getElementById('cTitle').textContent='Nova Entrega';document.getElementById('btnDel').style.display='none';
+  document.getElementById('cTitle').textContent='Nova Entrega';document.getElementById('btnDel').style.display='none';document.getElementById('btnDuplicar').style.display='none';
   sf('fData',ST.selectedDate||'');sf('fPer','');sf('fSt','');sf('fOv','');sf('fLj','CD');
   ['fCli','fCep','fRua','fNum','fCmp','fBai','fCid','fProd','fContNome','fContTel','fMl','fNotas','fRestAlm','fRestHorario','fAutor','fPeso','fValor','fDocFiscal','fNfNum','fHoraDe','fHoraAte'].forEach(id=>sf(id,''));
   togDocFiscal();
@@ -3561,7 +3562,7 @@ function openTcFromRoute(tcId){
 function openCard(id){
   const d=ST.deliveries.find(x=>x.id===id);if(!d)return;
   _setPresenceEditando('card_entrega',id,d.cliente||d.rua||'Entrega');
-  editId=id;_cardOpenedAt=d.updatedAt||d.createdAt||'';document.getElementById('cTitle').textContent='Editar Entrega';document.getElementById('btnDel').style.display='';
+  editId=id;_cardOpenedAt=d.updatedAt||d.createdAt||'';document.getElementById('cTitle').textContent='Editar Entrega';document.getElementById('btnDel').style.display='';document.getElementById('btnDuplicar').style.display='';
   sf('fData',d.data||'');sf('fPer',d.periodo||'');sf('fSt',d.status||'');sf('fOv',d.origemVenda||'');sf('fLj',d.loja||'CD');
   sf('fCli',d.cliente||'');sf('fCep',d.cep||'');sf('fRua',d.rua||'');sf('fNum',d.numero||'');sf('fCmp',d.complemento||'');
   sf('fBai',d.bairro||'');sf('fCid',d.cidade||'');sf('fProd',d.produto||'');sf('fContNome',d.contatoNome||'');sf('fContTel',d.contato||'');sf('fMl',d.mapsLink||'');
@@ -3972,6 +3973,55 @@ function confirmUnrouted(){
   _markRouteModified();save();closeUModal();renderRouteSection();toast('Entrega(s) incluída(s) na rota!','ok');
 }
 
+function duplicateCard(srcId){
+  const sid=srcId||editId;
+  const d=(ST.deliveries||[]).find(x=>x.id===sid);
+  if(!d){toast('Card não encontrado','err');return;}
+  const now=new Date().toISOString();
+  const newId=uid();
+  const nd=Object.assign({},d,{
+    id:newId,
+    hasNf:false,
+    hasBoleto:false,
+    nfNumero:'',
+    createdAt:now,
+    updatedAt:now,
+    createdBy:d.updatedBy||d.createdBy||'',
+    updatedBy:d.updatedBy||d.createdBy||''
+  });
+  if(!ST.deliveries)ST.deliveries=[];
+  ST.deliveries.push(nd);
+  if(_fbDb)_fbDb.ref('cdl_state/deliveries/'+newId).set(nd).catch(()=>{});
+  save();
+  closeCard();
+  document.getElementById('view-card-modal')&&(document.getElementById('view-card-modal').style.display='none');
+  setTimeout(()=>openCard(newId),80);
+  toast('📋 Card duplicado! Ajuste e salve.','ok');
+}
+function duplicateTcCard(){
+  const tid=tcEditId;
+  const t=(ST.transfers||[]).find(x=>x.id===tid);
+  if(!t){toast('Card não encontrado','err');return;}
+  const now=new Date().toISOString();
+  const newId=uid();
+  const nt=Object.assign({},t,{
+    id:newId,
+    hasAnexo:false,
+    coletado:false,
+    coletadoEm:null,
+    createdAt:now,
+    updatedAt:now,
+    createdBy:t.updatedBy||t.createdBy||'',
+    updatedBy:t.updatedBy||t.createdBy||''
+  });
+  if(!ST.transfers)ST.transfers=[];
+  ST.transfers.push(nt);
+  if(_fbDb)_fbDb.ref('cdl_state/transfers/'+newId).set(nt).catch(()=>{});
+  save();
+  closeTcForm();
+  setTimeout(()=>openEditTcCard(newId),80);
+  toast('📋 Card de coleta duplicado! Ajuste e salve.','ok');
+}
 function delCard(){
   if(!editId)return;
   if(!confirm('Excluir esta entrega?'))return;
@@ -4732,6 +4782,7 @@ function viewCard(id){
       +'<span style="font-weight:700;color:#374151;font-size:0.9rem">Detalhes da Entrega</span>'
       +'<div style="display:flex;gap:8px;align-items:center">'
       +'<button id="vcm-edit-btn" style="padding:4px 12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">✏ Editar</button>'
+      +'<button id="vcm-dup-btn" style="padding:4px 12px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:0.8rem;cursor:pointer;font-weight:600">📋 Duplicar</button>'
       +'<button onclick="document.getElementById(&quot;view-card-modal&quot;).style.display=&quot;none&quot;" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6b7280">&times;</button>'
       +'</div></div>'
       +'<div id="vcm-body"></div>'
@@ -4740,6 +4791,7 @@ function viewCard(id){
   }
   document.getElementById('vcm-body').innerHTML=html;
   document.getElementById('vcm-edit-btn').onclick=function(){document.getElementById('view-card-modal').style.display='none';openCard(id);};
+  document.getElementById('vcm-dup-btn').onclick=function(){document.getElementById('view-card-modal').style.display='none';duplicateCard(id);};
   modal.style.display='flex';
   modal.onclick=function(e){if(e.target===modal)modal.style.display='none';};
 }
@@ -5555,6 +5607,11 @@ function admCarregarIcms(input){
         });
         localStorage.setItem('cdl_icms',JSON.stringify(icms));
         if(_fbDb)_fbDb.ref('cdl_config/catalogo_icms').set(icms).catch(e=>console.warn(e));
+        // Sincroniza com Supabase para compartilhar com o app de Relatório
+        fetch('https://relatorio-ecommerce.vercel.app/api/ecommerce_relatorio',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({action:'dbPut',store:'config',key:'icms_catalogo',value:icms})
+        }).catch(e=>console.warn('[icms] falha ao sincronizar Supabase:',e.message));
         const total=Object.keys(icms).length;
         if(info)info.textContent=`✓ ${total} produtos carregados`;
         const prev=document.getElementById('adm-icms-preview');
@@ -5580,6 +5637,10 @@ function admCarregarIcms(input){
 function admLimparIcms(){
   localStorage.removeItem('cdl_icms');
   if(_fbDb)_fbDb.ref('cdl_config/catalogo_icms').remove().catch(e=>console.warn(e));
+  fetch('https://relatorio-ecommerce.vercel.app/api/ecommerce_relatorio',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'dbPut',store:'config',key:'icms_catalogo',value:{}})
+  }).catch(e=>console.warn('[icms] falha ao limpar Supabase:',e.message));
   const el=document.getElementById('adm-icms-file');if(el)el.value='';
   const prev=document.getElementById('adm-icms-preview');if(prev)prev.style.display='none';
   const info=document.getElementById('adm-icms-info');if(info)info.textContent='';
@@ -6046,7 +6107,7 @@ function openTcForm(){
   _setPresenceEditando('card_coleta',tcEditId,'Nova coleta/transferência');
   _tcProdutos=[];_tcSelected=new Set();renderTcProdLista();
   document.getElementById('tcTitle').textContent='Nova Transferência / Coleta';
-  const _btnDel0=document.getElementById('tcBtnDel');if(_btnDel0)_btnDel0.style.display='none';
+  const _btnDel0=document.getElementById('tcBtnDel');if(_btnDel0)_btnDel0.style.display='none';const _btnDupl0=document.getElementById('tcBtnDupl');if(_btnDupl0)_btnDupl0.style.display='none';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   sf('tcTitulo','');sf('tcData',ST.selectedDate||'');sf('tcObs','');sf('tcAntesEntrega','');sf('tcPontoDestino','');sf('tcClienteDestinoAddr','');sf('tcClienteDestinoMaps','');
   const _tcHistWrapNew=document.getElementById('tcAutorHistWrap');if(_tcHistWrapNew)_tcHistWrapNew.style.display='none';
@@ -6163,7 +6224,7 @@ function openEditTcCard(id){
   _setPresenceEditando('card_coleta',id,tc.titulo||'Coleta/Transferência');
   _tcProdutos=[...(tc.produtos||[])];renderTcProdLista();
   document.getElementById('tcTitle').textContent='Editar Transferência / Coleta';
-  const _btnDel1=document.getElementById('tcBtnDel');if(_btnDel1)_btnDel1.style.display='';
+  const _btnDel1=document.getElementById('tcBtnDel');if(_btnDel1)_btnDel1.style.display='';const _btnDupl1=document.getElementById('tcBtnDupl');if(_btnDupl1)_btnDupl1.style.display='';
   const sf=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||'';};
   sf('tcTitulo',tc.titulo||'');sf('tcData',tc.data);sf('tcObs',tc.obs||'');sf('tcAntesEntrega',tc.antesEntrega||'');
   // Pré-preencher nome com o último usado
@@ -9430,6 +9491,7 @@ function addTcToRoute(tcId, routeType, per){
     </div><!-- fim .mbody -->
     <div class="mfooter">
       <button id="tcBtnDel" onclick="deleteTcCard()" style="display:none;background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;margin-right:auto">🗑 Excluir</button>
+      <button id="tcBtnDupl" onclick="duplicateTcCard()" style="display:none;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">📋 Duplicar</button>
       <button onclick="closeTcForm()" class="btn btn-outline btn-sm">Cancelar</button>
       <button onclick="saveTcCard()" class="btn btn-primary btn-sm">💾 Salvar</button>
     </div>
@@ -9438,7 +9500,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20260925155459';
+  const _BUILD_CURRENT='20261009101415';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
