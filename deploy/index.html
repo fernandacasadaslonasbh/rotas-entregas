@@ -2475,9 +2475,9 @@ async function recalcPer(perName){
           _d.coords=_coLink;const _idxL=ST.deliveries.findIndex(x=>x.id===s.id);if(_idxL>=0)ST.deliveries[_idxL].coords=_coLink;
         } else if(!_d.coords){
           try{
-            // Tenta geocodificar: 1) endereço do card, 2) endereço extraído do link do Maps
-            const _addrFallback=_d.mapsLink?addrFromMapsUrl(_d.mapsLink):null;
-            const _addrToGeo=hasAddr(_d)?bAddr(_d):(_addrFallback||null);
+            // Tenta geocodificar: 1) endereço extraído do link do Maps, 2) endereço do card
+            const _addrFromLink=_d.mapsLink?addrFromMapsUrl(_d.mapsLink):null;
+            const _addrToGeo=_addrFromLink||(hasAddr(_d)?bAddr(_d):null);
             let co=_addrToGeo?await geocode(_addrToGeo):null;
             if(co){_d.coords=co;const idx=ST.deliveries.findIndex(x=>x.id===s.id);if(idx>=0)ST.deliveries[idx].coords=co;}
           }catch(e){}
@@ -3654,11 +3654,18 @@ function saveCard(){
   const wasNewCard=newCard;
   if(!newCard&&editId){
     const idx=ST.deliveries.findIndex(x=>x.id===editId);
-    if(idx>=0){const p=ST.deliveries[idx];if(bAddr(p)!==bAddr(data))data.coords=null;
+    if(idx>=0){const p=ST.deliveries[idx];
+      const _linkChanged=((p.mapsLink||'')!==(data.mapsLink||''));
+      const _addrChanged=bAddr(p)!==bAddr(data);
+      if(_linkChanged||_addrChanged){
+        // Link do Maps mudou → tenta extrair coords do novo link; senão reseta para re-geocoding
+        const _newCoLink=data.mapsLink?coordsFromUrl(data.mapsLink):null;
+        data.coords=_newCoLink||null;
+      }
       const hist=[...(p.historico||[]),{nome:autor,em:hoje+' '+now,tipo:'alteração'}];
       ST.deliveries[idx]={...p,...data,historico:hist,updatedAt:new Date().toISOString(),updatedBy:autor};}
   }else{
-    const _nowIso=new Date().toISOString();ST.deliveries.push({id:editId,coords:null,...data,historico:[{nome:autor,em:hoje+' '+now,tipo:'criação'}],createdAt:_nowIso,updatedAt:_nowIso,createdBy:autor});
+    const _nowIso=new Date().toISOString();const _newCardCoLink=data.mapsLink?coordsFromUrl(data.mapsLink):null;ST.deliveries.push({id:editId,coords:_newCardCoLink||null,...data,historico:[{nome:autor,em:hoje+' '+now,tipo:'criação'}],createdAt:_nowIso,updatedAt:_nowIso,createdBy:autor});
     newCard=false;
   }
   if(!ST.selectedDate&&data.data)ST.selectedDate=data.data;
@@ -6125,16 +6132,20 @@ function closeTcForm(){
   document.getElementById('tcOverlay').style.display='none';
 }
 // ── Anexos do card TC ─────────────────────────────────────────────────────
+const _tcAnexosMemCache={};  // cache em memória: id → arr (fallback quando localStorage cheio)
 function _tcAnexoKey(id){return'cdl_tc_anexos_'+id;}
 function _getTcAnexos(){
   if(!tcEditId)return[];
+  // Prefere cache em memória (mais confiável que localStorage em dispositivos com pouco espaço)
+  if(_tcAnexosMemCache[tcEditId])return _tcAnexosMemCache[tcEditId];
   const raw=localStorage.getItem(_tcAnexoKey(tcEditId));
   if(!raw)return[];
   try{const p=JSON.parse(raw);return Array.isArray(p)?p:[];}catch(e){return[];}
 }
 function _setTcAnexos(arr){
   if(!tcEditId)return;
-  try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){console.warn(e);}
+  _tcAnexosMemCache[tcEditId]=arr;  // sempre salva em memória (nunca falha)
+  try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){console.warn('TC anexo localStorage cheio:',e);}
   // Atualiza SOMENTE flag hasAnexo — sem bumpar updatedAt (evita falso conflito de concorrência)
   const _taIdx=(ST.transfers||[]).findIndex(x=>x.id===tcEditId);
   if(_taIdx>=0){
@@ -6177,8 +6188,25 @@ function removeTcAnexo(idx){
 }
 function downloadTcAnexo(idx){
   const arr=_getTcAnexos();
-  const f=arr[idx];if(!f)return;
-  try{const a=document.createElement('a');a.href=f.data;a.download=f.name;a.click();}catch(e){}
+  const f=arr[idx];
+  if(!f||!f.data){toast('Arquivo não disponível — aguarde carregar ou reabra o card','err');return;}
+  try{
+    // Converte base64 → Blob → URL de objeto (compatível com todos os navegadores)
+    const parts=f.data.split(',');
+    const mime=(parts[0].match(/:(.*?);/)||[])[1]||'application/octet-stream';
+    const raw=atob(parts[1]||parts[0]);
+    const buf=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)buf[i]=raw.charCodeAt(i);
+    const blob=new Blob([buf],{type:mime});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=f.name;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  }catch(e){
+    // Fallback: tenta data URL direto
+    try{const a=document.createElement('a');a.href=f.data;a.download=f.name;document.body.appendChild(a);a.click();document.body.removeChild(a);}catch(e2){toast('Erro ao baixar arquivo','err');}
+  }
 }
 function _renderTcAnexos(){
   const el=document.getElementById('tcAnexoList');if(!el)return;
@@ -6197,7 +6225,8 @@ function _loadTcAnexos(){
       if(!snap.exists())return;
       const arr=snap.val();
       if(!Array.isArray(arr)||!arr.length)return;
-      try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){}
+      _tcAnexosMemCache[tcEditId]=arr;  // salva em memória ANTES de localStorage
+      try{localStorage.setItem(_tcAnexoKey(tcEditId),JSON.stringify(arr));}catch(e){console.warn('TC localStorage cheio, usando memória:',e);}
       _renderTcAnexos();
     }).catch(e=>console.warn('TC anexo load:',e));
   }
@@ -9500,7 +9529,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20261009101415';
+  const _BUILD_CURRENT='20261020105739';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
