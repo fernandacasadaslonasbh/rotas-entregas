@@ -1254,7 +1254,16 @@ function _applyState(s){
     if(!_loc){_mergedDels[d.id]=d;return;}
     const _sTs=d.updatedAt||d.createdAt||'';
     const _lTs=_loc.updatedAt||_loc.createdAt||'';
-    if(_sTs>=_lTs)_mergedDels[d.id]=d; // servidor igual ou mais novo
+    if(_sTs>=_lTs){
+      // Servidor vence — mas preserva produtos/hasNf/hasBoleto locais se servidor não tiver
+      // Evita perda intermitente de dados críticos por sincronização de dispositivo desatualizado
+      const _merged={...d};
+      if((!d.produtos||!d.produtos.length)&&_loc.produtos&&_loc.produtos.length)_merged.produtos=_loc.produtos;
+      if(!d.produto&&_loc.produto)_merged.produto=_loc.produto;
+      if(!d.hasNf&&_loc.hasNf)_merged.hasNf=_loc.hasNf;
+      if(!d.hasBoleto&&_loc.hasBoleto)_merged.hasBoleto=_loc.hasBoleto;
+      _mergedDels[d.id]=_merged;
+    }
     // else: local mais novo, mantém
   });
   ST.deliveries=Object.values(_mergedDels);
@@ -9529,7 +9538,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20261020105739';
+  const _BUILD_CURRENT='20261115101345';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
