@@ -2,8 +2,9 @@
  * Vercel Serverless Function — último preço de compra por SKU (Omie)
  * Busca NF-e de entrada (compra) mais recente por SKU.
  * Tenta CD primeiro; se não encontrar, tenta Filial.
+ * Estratégia: busca por intervalo de datas (últimos 2 anos) e filtra SKU nos itens.
  *
- * POST { skus: ["2004", "1234", ...], debug?: false }
+ * POST { skus: ["2004", "1234", ...] }
  * → { "2004": { preco: 15.85, data: "29/10/2025", fornecedor: "CARGA TEXTIL...", empresa: "CD" } | null }
  */
 
@@ -16,13 +17,9 @@ const CREDS = {
 const URL_NFE = 'https://app.omie.com.br/api/v1/produtos/nfe/';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Palavras-chave que identificam a própria empresa (transferências internas)
-// NF-e cujo remetente contenha qualquer um desses termos é ignorada
+// Palavras-chave que identificam a própria empresa (transferências internas a ignorar)
 const EMPRESA_PROPRIA = ['CASA DAS LONAS', 'CASADASLONAS'];
 
-/**
- * Converte data "DD/MM/YYYY" para Date para comparação.
- */
 function parseDateBR(s) {
   if (!s) return null;
   const [d, m, y] = s.split('/');
@@ -30,88 +27,108 @@ function parseDateBR(s) {
   return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
 }
 
-/** Verifica se o remetente é a própria empresa (transferência interna) */
+function formatDateBR(dt) {
+  return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+}
+
 function isEmpresaPropria(nome = '') {
   const upper = nome.toUpperCase().replace(/\s+/g, '');
   return EMPRESA_PROPRIA.some(kw => upper.includes(kw.replace(/\s+/g, '')));
 }
 
 /**
- * Busca última NF-e de entrada para o SKU na empresa indicada.
- * Ignora NF-e cujo remetente seja a própria Casa das Lonas.
- * Retorna { preco, data, fornecedor, empresa } ou null.
+ * Faz uma chamada ListarNFe paginada na empresa e retorna o array de NF-e.
  */
-async function buscarPrecoNaEmpresa(sku, empresa, debug = false) {
-  const creds = CREDS[empresa];
-  try {
-    const body = {
+async function listarNFe(creds, pagina, dataDeBR, dataAteBR) {
+  const r = await fetch(URL_NFE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
       call: 'ListarNFe',
       app_key: creds.key,
       app_secret: creds.secret,
       param: [{
-        pagina: 1,
-        registros_por_pagina: 20,
+        pagina,
+        registros_por_pagina: 50,
         apenas_importado_api: 'N',
         filtrar_por_tipo: 'E',
-        filtrar_por_codigo_produto: String(sku),
+        filtrar_por_data_de: dataDeBR,
+        filtrar_por_data_ate: dataAteBR,
         ordenar_por: 'DATA_EMISSAO',
         ordem_decrescente: 'S'
       }]
-    };
+    })
+  });
+  const data = await r.json();
+  if (data.faultstring) return { nfs: [], totalPaginas: 0, _fault: data.faultstring };
+  const nfs = data.nfCadastro || data.NfCadastro || data.cadastros || [];
+  const totalPaginas = data.total_de_paginas || (nfs.length > 0 ? 1 : 0);
+  return { nfs, totalPaginas };
+}
 
-    const r = await fetch(URL_NFE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await r.json();
-
-    if (debug) {
-      console.log(`[ultimo_preco] ${empresa} ${sku} raw:`, JSON.stringify(data).slice(0, 500));
+/**
+ * Busca o SKU em uma NF-e, retornando o preço unitário se encontrar.
+ */
+function extrairPrecoDoSku(nf, sku) {
+  const detalhes = nf.nfDetalhe || nf.det || nf.detalhe || [];
+  for (const det of detalhes) {
+    const prod = det.nfProduto || det.produto || det.prod || {};
+    const codigo = String(prod.cCodigo || prod.codigo || prod.cProduto || '').toUpperCase().trim();
+    if (codigo === sku) {
+      const preco = parseFloat(prod.nValUnit || prod.valor_unitario || prod.vUnCom || 0) || null;
+      return preco;
     }
+  }
+  return null;
+}
 
-    if (data.faultstring) return null;
+/**
+ * Busca última NF-e de entrada para o SKU na empresa indicada.
+ * Varre até MAX_PAGINAS páginas (50 NF-e por página), da mais recente à mais antiga.
+ */
+async function buscarPrecoNaEmpresa(sku, empresa) {
+  const creds = CREDS[empresa];
+  const skuUp = sku.toUpperCase().trim();
 
-    // A resposta do ListarNFe contém array em diferentes nomes dependendo da versão
-    const nfs = data.nfCadastro || data.NfCadastro || data.cadastros || [];
-    if (!nfs.length) return null;
+  const hoje = new Date();
+  const doisAnosAtras = new Date();
+  doisAnosAtras.setFullYear(hoje.getFullYear() - 2);
+  const dataAteBR = formatDateBR(hoje);
+  const dataDeBR  = formatDateBR(doisAnosAtras);
 
-    // Pega a mais recente (já ordenada DESC pelo Omie)
-    let melhorPreco = null;
-    let melhorData = null;
+  const MAX_PAGINAS = 4; // até 200 NF-e por empresa
 
-    for (const nf of nfs) {
-      // Verifica o remetente da NF inteira (transferência interna = ignorar)
-      const remetente = nf.nfRemetente || nf.remetente || nf.emit || {};
-      const fornecedor = remetente.cRazaoSocial || remetente.razao_social || remetente.xNome || '';
-      if (isEmpresaPropria(fornecedor)) continue; // Pula NF-e interna
+  try {
+    for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+      const { nfs, totalPaginas, _fault } = await listarNFe(creds, pagina, dataDeBR, dataAteBR);
 
-      const cab = nf.nfCabecalho || nf.cabecalho || {};
-      const dataEmissao = cab.dEmi || cab.data_emissao || '';
-      const dtObj = parseDateBR(dataEmissao);
+      if (_fault) {
+        console.error(`[ultimo_preco] ${empresa} p${pagina} fault: ${_fault}`);
+        return null;
+      }
+      if (!nfs.length) return null;
 
-      // Busca o item com o SKU nos detalhes da NF
-      const detalhes = nf.nfDetalhe || nf.det || nf.detalhe || [];
-      for (const det of detalhes) {
-        const prod = det.nfProduto || det.produto || det.prod || {};
-        const codigo = String(prod.cCodigo || prod.codigo || prod.cProduto || '').toUpperCase();
-        if (codigo !== sku.toUpperCase()) continue;
+      for (const nf of nfs) {
+        // Ignora NF-e internas (transferência entre unidades)
+        const remetente = nf.nfRemetente || nf.remetente || nf.emit || {};
+        const fornecedor = remetente.cRazaoSocial || remetente.razao_social || remetente.xNome || '';
+        if (isEmpresaPropria(fornecedor)) continue;
 
-        const preco = parseFloat(prod.nValUnit || prod.valor_unitario || prod.vUnCom || 0) || null;
+        const preco = extrairPrecoDoSku(nf, skuUp);
         if (!preco) continue;
 
-        if (!melhorData || (dtObj && dtObj > melhorData)) {
-          melhorData = dtObj;
-          melhorPreco = { preco, data: dataEmissao, fornecedor, empresa };
-        }
-        break; // Já encontrou o SKU nessa NF, passa para próxima
+        const cab = nf.nfCabecalho || nf.cabecalho || {};
+        const dataEmissao = cab.dEmi || cab.data_emissao || '';
+        return { preco, data: dataEmissao, fornecedor, empresa };
       }
 
-      if (melhorPreco) break; // Já tem a mais recente externa, para
+      // Se não há mais páginas, para
+      if (pagina >= totalPaginas) break;
+
+      await sleep(300);
     }
 
-    return melhorPreco;
-
+    return null;
   } catch (e) {
     console.error(`[ultimo_preco] ${empresa} ${sku}: ${e.message}`);
     return null;
@@ -125,25 +142,25 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const { skus, debug = false } = req.body || {};
+  const { skus } = req.body || {};
   if (!skus || !skus.length) return res.status(400).json({ erro: 'skus é obrigatório' });
 
   const results = {};
 
   for (const sku of skus) {
-    const skuUp = sku.toUpperCase();
+    const skuUp = sku.toUpperCase().trim();
 
     // 1. Tenta CD
-    let resultado = await buscarPrecoNaEmpresa(sku, 'CD', debug);
-    await sleep(350);
+    let resultado = await buscarPrecoNaEmpresa(sku, 'CD');
+    await sleep(300);
 
-    // 2. Se não encontrou no CD, tenta Filial
+    // 2. Se não achou no CD, tenta Filial
     if (!resultado) {
-      resultado = await buscarPrecoNaEmpresa(sku, 'Filial', debug);
-      await sleep(350);
+      resultado = await buscarPrecoNaEmpresa(sku, 'Filial');
+      await sleep(300);
     }
 
-    results[skuUp] = resultado; // null se não encontrou em nenhuma
+    results[skuUp] = resultado ?? null;
   }
 
   return res.status(200).json(results);
