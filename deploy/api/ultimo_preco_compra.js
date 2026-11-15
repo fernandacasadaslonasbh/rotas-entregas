@@ -50,7 +50,6 @@ async function listarNFe(creds, pagina, dataDeBR, dataAteBR) {
       param: [{
         pagina,
         registros_por_pagina: 50,
-        apenas_importado_api: 'N',
         filtrar_por_tipo: 'E',
         filtrar_por_data_de: dataDeBR,
         filtrar_por_data_ate: dataAteBR,
@@ -151,7 +150,6 @@ async function debugRaw(empresa, dataDeBR, dataAteBR) {
       param: [{
         pagina: 1,
         registros_por_pagina: 3,
-        apenas_importado_api: 'N',
         filtrar_por_tipo: 'E',
         filtrar_por_data_de: dataDeBR,
         filtrar_por_data_ate: dataAteBR,
