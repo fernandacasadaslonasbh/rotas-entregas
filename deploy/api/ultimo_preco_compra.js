@@ -50,9 +50,7 @@ async function listarNFe(creds, pagina) {
       param: [{
         pagina,
         registros_por_pagina: 50,
-        cTipo: 'E',
-        cOrdenarPor: 'DATA_EMISSAO',
-        cOrdemDecrescente: 'S'
+        cTipo: 'E'
       }]
     })
   });
@@ -141,9 +139,7 @@ async function debugRaw(empresa) {
       param: [{
         pagina: 1,
         registros_por_pagina: 3,
-        cTipo: 'E',
-        cOrdenarPor: 'DATA_EMISSAO',
-        cOrdemDecrescente: 'S'
+        cTipo: 'E'
       }]
     })
   });
