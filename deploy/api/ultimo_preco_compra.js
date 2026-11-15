@@ -39,7 +39,7 @@ function isEmpresaPropria(nome = '') {
 /**
  * Faz uma chamada ListarNFe paginada na empresa e retorna o array de NF-e.
  */
-async function listarNFe(creds, pagina, dataDeBR, dataAteBR) {
+async function listarNFe(creds, pagina) {
   const r = await fetch(URL_NFE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -50,17 +50,15 @@ async function listarNFe(creds, pagina, dataDeBR, dataAteBR) {
       param: [{
         pagina,
         registros_por_pagina: 50,
-        filtrar_por_tipo: 'E',
-        filtrar_por_data_de: dataDeBR,
-        filtrar_por_data_ate: dataAteBR,
-        ordenar_por: 'DATA_EMISSAO',
-        ordem_decrescente: 'S'
+        cTipo: 'E',
+        cOrdenarPor: 'DATA_EMISSAO',
+        cOrdemDecrescente: 'S'
       }]
     })
   });
   const data = await r.json();
   if (data.faultstring) return { nfs: [], totalPaginas: 0, _fault: data.faultstring };
-  const nfs = data.nfCadastro || data.NfCadastro || data.cadastros || [];
+  const nfs = data.nfCadastro || data.NfCadastro || data.cadastros || data.listaNfe || [];
   const totalPaginas = data.total_de_paginas || (nfs.length > 0 ? 1 : 0);
   return { nfs, totalPaginas };
 }
@@ -88,18 +86,11 @@ function extrairPrecoDoSku(nf, sku) {
 async function buscarPrecoNaEmpresa(sku, empresa) {
   const creds = CREDS[empresa];
   const skuUp = sku.toUpperCase().trim();
-
-  const hoje = new Date();
-  const doisAnosAtras = new Date();
-  doisAnosAtras.setFullYear(hoje.getFullYear() - 2);
-  const dataAteBR = formatDateBR(hoje);
-  const dataDeBR  = formatDateBR(doisAnosAtras);
-
   const MAX_PAGINAS = 4; // até 200 NF-e por empresa
 
   try {
     for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
-      const { nfs, totalPaginas, _fault } = await listarNFe(creds, pagina, dataDeBR, dataAteBR);
+      const { nfs, totalPaginas, _fault } = await listarNFe(creds, pagina);
 
       if (_fault) {
         console.error(`[ultimo_preco] ${empresa} p${pagina} fault: ${_fault}`);
@@ -138,7 +129,7 @@ async function buscarPrecoNaEmpresa(sku, empresa) {
  * Modo debug: retorna a resposta bruta da primeira página para inspecionar a estrutura.
  * POST { debug_raw: true, empresa: "CD" }
  */
-async function debugRaw(empresa, dataDeBR, dataAteBR) {
+async function debugRaw(empresa) {
   const creds = CREDS[empresa];
   const r = await fetch(URL_NFE, {
     method: 'POST',
@@ -150,11 +141,9 @@ async function debugRaw(empresa, dataDeBR, dataAteBR) {
       param: [{
         pagina: 1,
         registros_por_pagina: 3,
-        filtrar_por_tipo: 'E',
-        filtrar_por_data_de: dataDeBR,
-        filtrar_por_data_ate: dataAteBR,
-        ordenar_por: 'DATA_EMISSAO',
-        ordem_decrescente: 'S'
+        cTipo: 'E',
+        cOrdenarPor: 'DATA_EMISSAO',
+        cOrdemDecrescente: 'S'
       }]
     })
   });
@@ -172,9 +161,7 @@ export default async function handler(req, res) {
 
   // ── Modo debug: inspecionar estrutura real da resposta ──
   if (debug_raw) {
-    const hoje = new Date();
-    const tresAtras = new Date(); tresAtras.setMonth(hoje.getMonth() - 3);
-    const raw = await debugRaw(empDebug, formatDateBR(tresAtras), formatDateBR(hoje));
+    const raw = await debugRaw(empDebug);
     // Retorna estrutura resumida: chaves do root + primeira NF parcial
     const nfs = raw.nfCadastro || raw.NfCadastro || raw.cadastros || raw.listaNfe || [];
     const primeiraNF = nfs[0] || null;
