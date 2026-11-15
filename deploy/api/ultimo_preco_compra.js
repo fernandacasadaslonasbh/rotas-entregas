@@ -135,6 +135,34 @@ async function buscarPrecoNaEmpresa(sku, empresa) {
   }
 }
 
+/**
+ * Modo debug: retorna a resposta bruta da primeira página para inspecionar a estrutura.
+ * POST { debug_raw: true, empresa: "CD" }
+ */
+async function debugRaw(empresa, dataDeBR, dataAteBR) {
+  const creds = CREDS[empresa];
+  const r = await fetch(URL_NFE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      call: 'ListarNFe',
+      app_key: creds.key,
+      app_secret: creds.secret,
+      param: [{
+        pagina: 1,
+        registros_por_pagina: 3,
+        apenas_importado_api: 'N',
+        filtrar_por_tipo: 'E',
+        filtrar_por_data_de: dataDeBR,
+        filtrar_por_data_ate: dataAteBR,
+        ordenar_por: 'DATA_EMISSAO',
+        ordem_decrescente: 'S'
+      }]
+    })
+  });
+  return r.json();
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -142,7 +170,37 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const { skus } = req.body || {};
+  const { skus, debug_raw, empresa: empDebug = 'CD' } = req.body || {};
+
+  // ── Modo debug: inspecionar estrutura real da resposta ──
+  if (debug_raw) {
+    const hoje = new Date();
+    const tresAtras = new Date(); tresAtras.setMonth(hoje.getMonth() - 3);
+    const raw = await debugRaw(empDebug, formatDateBR(tresAtras), formatDateBR(hoje));
+    // Retorna estrutura resumida: chaves do root + primeira NF parcial
+    const nfs = raw.nfCadastro || raw.NfCadastro || raw.cadastros || raw.listaNfe || [];
+    const primeiraNF = nfs[0] || null;
+    return res.status(200).json({
+      _debug: true,
+      empresa: empDebug,
+      root_keys: Object.keys(raw),
+      total_registros: raw.total_de_registros,
+      total_paginas: raw.total_de_paginas,
+      faultstring: raw.faultstring || null,
+      nfs_array_name: raw.nfCadastro ? 'nfCadastro' : raw.NfCadastro ? 'NfCadastro' : raw.cadastros ? 'cadastros' : raw.listaNfe ? 'listaNfe' : 'NÃO ENCONTRADO',
+      nfs_count: nfs.length,
+      primeira_nf_keys: primeiraNF ? Object.keys(primeiraNF) : [],
+      primeira_nf_cabecalho: primeiraNF?.nfCabecalho || primeiraNF?.cabecalho || null,
+      primeira_nf_remetente: primeiraNF?.nfRemetente || primeiraNF?.remetente || primeiraNF?.emit || null,
+      primeira_nf_detalhe_0_keys: primeiraNF ? Object.keys((primeiraNF.nfDetalhe||primeiraNF.det||primeiraNF.detalhe||[])[0]||{}) : [],
+      primeira_nf_produto_0: (() => {
+        if (!primeiraNF) return null;
+        const det = (primeiraNF.nfDetalhe||primeiraNF.det||primeiraNF.detalhe||[])[0]||{};
+        return det.nfProduto || det.produto || det.prod || null;
+      })()
+    });
+  }
+
   if (!skus || !skus.length) return res.status(400).json({ erro: 'skus é obrigatório' });
 
   const results = {};
