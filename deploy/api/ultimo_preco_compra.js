@@ -138,8 +138,7 @@ async function debugRaw(empresa) {
       app_secret: creds.secret,
       param: [{
         pagina: 1,
-        registros_por_pagina: 3,
-        cTipo: 'E'
+        registros_por_pagina: 3
       }]
     })
   });
