@@ -9091,7 +9091,7 @@ async function gerarNFOmieRoute(date, orig, nota){
     const cmcFinal = cmcVal != null ? cmcVal * (1 + icmsPct) : null;
     if(cmcFinal == null){ return; } // sem CMC → pula
     if(!agregado[skuLc]){
-      agregado[skuLc] = { codigo_produto: codProd, sku: r.sku, qtd: 0, valor_unitario: cmcFinal };
+      agregado[skuLc] = { codigo_produto: codProd, sku: r.sku, qtd: 0, valor_unitario: Math.round((cmcFinal||0)*100)/100 };
     }
     agregado[skuLc].qtd += Number(r.qtd)||0;
   });
@@ -9112,7 +9112,7 @@ async function gerarNFOmieRoute(date, orig, nota){
   }
 
   const hoje = new Date().toLocaleDateString('pt-BR');
-  const resumo = itens.map(i=>`• ${i.sku} × ${i.qtd} @ R$ ${i.valor_unitario.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})}`).join('\n');
+  const resumo = itens.map(i=>`• ${i.sku} × ${i.qtd} @ R$ ${i.valor_unitario.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`).join('\n');
   const confirmMsg = `Criar Pedido de Venda na Omie:\n\nRota: CD → ${nota}\nCliente: ${nota === 'Filial' ? 'CASA DAS LONAS - FILIAL' : 'CASA DAS LONAS - MATRIZ'}\nItens (${itens.length}):\n${resumo}${aviso}\n\nConfirmar?`;
 
   if(!confirm(confirmMsg)) return;
@@ -9166,7 +9166,7 @@ async function gerarRemessaOmie(date, orig, nota){
     const cmcVal = cmcLojaOrig[skuUp] ?? null;
     if(cmcVal == null){ if(!semCmc.includes(r.sku)) semCmc.push(r.sku); return; }
     if(!agregado[skuLc]){
-      agregado[skuLc] = { sku: r.sku, qtd: 0, valor_unitario: cmcVal };
+      agregado[skuLc] = { sku: r.sku, qtd: 0, valor_unitario: Math.round((cmcVal||0)*100)/100 };
     }
     agregado[skuLc].qtd += Number(r.qtd)||0;
   });
@@ -9182,7 +9182,7 @@ async function gerarRemessaOmie(date, orig, nota){
   }
 
   const hoje = new Date().toLocaleDateString('pt-BR');
-  const resumo = itens.map(i=>`• ${i.sku} × ${i.qtd} @ R$ ${i.valor_unitario.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})}`).join('\n');
+  const resumo = itens.map(i=>`• ${i.sku} × ${i.qtd} @ R$ ${i.valor_unitario.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`).join('\n');
   const origLabel = orig === 'Matriz' ? 'CASA DAS LONAS - MATRIZ' : 'CASA DAS LONAS - FILIAL';
   const destLabel = nota === 'Matriz' ? 'CASA DAS LONAS - MATRIZ' : 'CASA DAS LONAS - FILIAL';
   const confirmMsg = `Criar Remessa na Omie:\n\nRota: ${orig} → ${nota}\nOrigem: ${origLabel}\nDestino: ${destLabel}\nItens (${itens.length}):\n${resumo}${aviso}\n\nConfirmar?`;
@@ -9538,7 +9538,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20261119190117';
+  const _BUILD_CURRENT='20261125142421';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
