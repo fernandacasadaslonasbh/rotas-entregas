@@ -8849,9 +8849,9 @@ function _renderTransfResumo(el){
         <td><span style="background:${destBg};color:${destColor};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600">${recDone?'✓ ':''}${r.destFisico||'—'}</span></td>
         <td style="font-size:12px;color:#374151">${nf}</td>
         <td style="text-align:center;font-size:12px">${_estoqueCell}</td>
-        ${showCmc?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${cmcVal!=null?'R$ '+cmcVal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'}</td>`:''}
-        ${showCmc?(()=>{if(!showCmc)return '';const pctTag=icmsPct?`<br><span style="font-size:10px;color:#9333ea;font-weight:400">+${(icmsPct*100).toFixed(2)}%</span>`:'';return `<td style="text-align:right;font-size:12px;color:#7c3aed;font-weight:600">${cmcFinal!=null?'R$ '+cmcFinal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})+pctTag:'—'}</td>`;})():''}
-        ${showCmcLoja?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${_cmcLojaVal!=null?'R$ '+_cmcLojaVal.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'}</td>`:''}
+        ${showCmc?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${cmcVal!=null?'R$ '+cmcVal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>`:''}
+        ${showCmc?(()=>{if(!showCmc)return '';const pctTag=icmsPct?`<br><span style="font-size:10px;color:#9333ea;font-weight:400">+${(icmsPct*100).toFixed(2)}%</span>`:'';return `<td style="text-align:right;font-size:12px;color:#7c3aed;font-weight:600">${cmcFinal!=null?'R$ '+cmcFinal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+pctTag:'—'}</td>`;})():''}
+        ${showCmcLoja?`<td style="text-align:right;font-size:12px;color:#92400e;font-weight:600">${_cmcLojaVal!=null?'R$ '+_cmcLojaVal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>`:''}
         ${editDel}
       </tr>${rptNote2}`;
     });
@@ -9538,7 +9538,7 @@ function addTcToRoute(tcId, routeType, per){
 <script>
 (function(){
   const _BUILD_KEY='cdl_build';
-  const _BUILD_CURRENT='20261125142421';
+  const _BUILD_CURRENT='20261125143843';
   // Salva build atual se ainda não tem
   if(!localStorage.getItem(_BUILD_KEY)){localStorage.setItem(_BUILD_KEY,_BUILD_CURRENT);}
   function _checkBuild(){
